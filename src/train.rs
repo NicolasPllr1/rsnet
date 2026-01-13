@@ -1,13 +1,14 @@
 // use indicatif::ProgressIterator;
 use ndarray::Array2;
 
-use crate::{load_mnist, Module, NN};
+use crate::{load_mnist, FcLayer, Layer, Module, ReluLayer, SoftMaxLayer, NN};
+use ndarray::prelude::*;
 use std::fs;
 use std::path::Path;
 
-type CostFunction = fn(labels: &[u8], actual_y: &Array2<f32>) -> (Array2<f32>, Array2<f32>);
+type CostFunction = fn(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>);
 
-fn least_squares(labels: &[u8], actual_y: &Array2<f32>) -> (Array2<f32>, Array2<f32>) {
+fn least_squares(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>) {
     let batch_size = labels.len();
     let num_classes = actual_y.ncols();
 
@@ -18,9 +19,27 @@ fn least_squares(labels: &[u8], actual_y: &Array2<f32>) -> (Array2<f32>, Array2<
     }
 
     // Calculate least squares for each sample in batch: (expected - actual)^2
-    let loss = (expected_y.clone() - actual_y).mapv(|x| x * x);
+    let loss = (expected_y.clone() - actual_y)
+        .mapv(|x| x * x)
+        .fold_axis(Axis(1), 0.0, |&a, &b| a + b);
     let grad = 2.0 * (expected_y.clone() - actual_y);
     (loss, grad)
+}
+
+fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>) {
+    let batch_size = labels.len();
+    let num_classes = actual_y.ncols();
+
+    // Convert labels to one-hot encoding Array2
+    let mut expected_y = Array2::zeros((batch_size, num_classes));
+    for (i, &label) in labels.iter().enumerate() {
+        expected_y[(i, label as usize)] = 1.0;
+    }
+
+    // Calculate least squares for each sample in batch: (expected - actual)^2
+    let loss = -(expected_y.clone() * actual_y.ln()).fold_axis(Axis(1), 0.0, |&a, &b| a + b);
+
+    (loss, expected_y)
 }
 
 trait Optimizer {
@@ -54,7 +73,14 @@ pub fn train(
 
     // TODO: Implement training logic
     // For now, use a hardcoded neural network
-    let mut nn = NN { layers: vec![] };
+    let mut nn = NN {
+        layers: vec![
+            Layer::FC(FcLayer::new(28 * 28, 3)),
+            Layer::ReLU(ReluLayer::new()),
+            Layer::FC(FcLayer::new(3, 10)),
+            Layer::Softmax(SoftMaxLayer::new()),
+        ],
+    };
 
     // Load MNIST dataset
     let (train_images, train_labels, _test_images, _test_labels) = load_mnist();
@@ -130,7 +156,7 @@ pub fn train(
 
         // Calculate loss and do backpropagation
         // The cost function will convert labels to one-hot encoding internally
-        optimizer.step(&mut nn, least_squares, &[*label], &output);
+        optimizer.step(&mut nn, cross_entropy, &[*label], &output);
 
         // Save checkpoint every checkpoint_stride steps
         if (step + 1) % checkpoint_stride == 0 {
