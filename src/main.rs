@@ -253,7 +253,7 @@ fn main() {
     if args.len() < 2 {
         eprintln!("Usage: {} <train|run> [arguments...]", args[0]);
         eprintln!("  train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride>  - Train a neural network");
-        eprintln!("  run <checkpoint>                                                         - Run inference using a checkpoint file");
+        eprintln!("  run <checkpoint> <example_file>                                          - Run inference using a checkpoint file");
         std::process::exit(1);
     }
 
@@ -312,12 +312,15 @@ fn main() {
             }
         }
         "run" => {
-            if args.len() < 3 {
-                eprintln!("Error: 'run' requires a checkpoint file path");
-                eprintln!("Usage: {} run <checkpoint_path>", args[0]);
+            if args.len() < 4 {
+                eprintln!("Error: 'run' requires a checkpoint file path and example file");
+                eprintln!("Usage: {} run <checkpoint_path> <example_file>", args[0]);
+                eprintln!(
+                    "  example_file should be a raw binary file with 784 bytes (28x28 MNIST image)"
+                );
                 std::process::exit(1);
             }
-            if let Err(e) = run::run(&args[2]) {
+            if let Err(e) = run::run(&args[2], &args[3]) {
                 eprintln!("Error running inference: {}", e);
                 std::process::exit(1);
             }
@@ -328,7 +331,7 @@ fn main() {
             eprintln!(
                 "  train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride>  - Train a neural network"
             );
-            eprintln!("  run <checkpoint>                                    - Run inference using a checkpoint file");
+            eprintln!("  run <checkpoint> <example_file>                     - Run inference using a checkpoint file");
             std::process::exit(1);
         }
     }
