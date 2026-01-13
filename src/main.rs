@@ -6,7 +6,7 @@ use mnist::MnistBuilder;
 use indicatif::ProgressIterator;  // Adds .progress() to iterators (like tqdm)
 
 /// Loads the MNIST dataset - downloads automatically if not cached
-///
+/// This is just some black magic which uses the ubyte files in data. Do not touch those.
 /// Returns: (train_images, train_labels, test_images, test_labels)
 /// - Images are Vec<u8> with pixel values 0-255
 /// - Labels are Vec<u8> with digit values 0-9
