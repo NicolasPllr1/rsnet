@@ -47,10 +47,10 @@ impl FcLayer {
         }
     }
     fn init_bias(output_size: usize) -> Array1<f32> {
-        return Array1::random(output_size, Uniform::new(0., 1.0).unwrap());
+        return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap());
     }
     fn init_2d_mat(input_size: usize, output_size: usize) -> Array2<f32> {
-        return Array2::random((input_size, output_size), Uniform::new(0., 1.0).unwrap());
+        return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap());
     }
 }
 
