@@ -4,6 +4,7 @@ use ndarray::Array2;
 use crate::{load_mnist, FcLayer, Layer, Module, ReluLayer, SoftMaxLayer, NN};
 use ndarray::prelude::*;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 type CostFunction = fn(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>);
@@ -43,7 +44,13 @@ fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<
 }
 
 trait Optimizer {
-    fn step(&self, nn: &mut NN, cost_function: CostFunction, labels: &[u8], output: &Array2<f32>);
+    fn step(
+        &self,
+        nn: &mut NN,
+        cost_function: CostFunction,
+        labels: &[u8],
+        output: &Array2<f32>,
+    ) -> Array1<f32>;
 }
 
 struct SGD {
@@ -51,13 +58,21 @@ struct SGD {
 }
 
 impl Optimizer for SGD {
-    fn step(&self, nn: &mut NN, cost_function: CostFunction, labels: &[u8], output: &Array2<f32>) {
+    fn step(
+        &self,
+        nn: &mut NN,
+        cost_function: CostFunction,
+        labels: &[u8],
+        output: &Array2<f32>,
+    ) -> Array1<f32> {
         // Calculate loss and gradient for the batch
-        let (_loss, grad) = cost_function(labels, output);
+        let (loss, grad) = cost_function(labels, output);
         // Backpropagate through layers in reverse order
         nn.backward(grad);
 
         nn.step(self.learning_rate);
+
+        loss
     }
 }
 
@@ -67,6 +82,7 @@ pub fn train(
     learning_rate: f32,
     checkpoint_folder: &str,
     checkpoint_stride: usize,
+    loss_csv_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create checkpoint folder if it doesn't exist
     fs::create_dir_all(checkpoint_folder)?;
@@ -143,6 +159,10 @@ pub fn train(
     }
     */
 
+    // Create or truncate CSV file and write header
+    let mut csv_file = fs::File::create(loss_csv_path)?;
+    writeln!(csv_file, "step,loss")?;
+
     let optimizer = SGD { learning_rate };
 
     for (step, (image, label)) in train_data.enumerate() {
@@ -156,7 +176,7 @@ pub fn train(
 
         // Calculate loss and do backpropagation
         // The cost function will convert labels to one-hot encoding internally
-        optimizer.step(&mut nn, cross_entropy, &[*label], &output);
+        let loss = optimizer.step(&mut nn, cross_entropy, &[*label], &output);
 
         // Save checkpoint every checkpoint_stride steps
         if (step + 1) % checkpoint_stride == 0 {
@@ -164,7 +184,20 @@ pub fn train(
             let checkpoint_path =
                 Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
             nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
-            println!("Saved checkpoint {} at step {}", checkpoint_num, step + 1);
+
+            // Get loss at this checkpoint (average over batch)
+            let checkpoint_loss = loss.mean().unwrap();
+
+            // Write to CSV
+            writeln!(csv_file, "{},{}", step + 1, checkpoint_loss)?;
+            csv_file.flush()?;
+
+            println!(
+                "Saved checkpoint {} at step {} (loss: {:.4})",
+                checkpoint_num,
+                step + 1,
+                checkpoint_loss
+            );
         }
     }
 

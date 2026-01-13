@@ -267,19 +267,19 @@ fn main() {
 
     if args.len() < 2 {
         eprintln!("Usage: {} <train|run> [arguments...]", args[0]);
-        eprintln!("  train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride>  - Train a neural network");
+        eprintln!("  train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride> <loss_csv>  - Train a neural network");
         eprintln!("  run <checkpoint> <example_file>                                          - Run inference using a checkpoint file");
         std::process::exit(1);
     }
 
     match args[1].as_str() {
         "train" => {
-            if args.len() < 6 {
+            if args.len() < 7 {
                 eprintln!(
-                    "Error: 'train' requires gradient steps, learning rate, checkpoint folder, and checkpoint stride"
+                    "Error: 'train' requires gradient steps, learning rate, checkpoint folder, checkpoint stride, and loss CSV path"
                 );
                 eprintln!(
-                    "Usage: {} train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride>",
+                    "Usage: {} train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride> <loss_csv>",
                     args[0]
                 );
                 std::process::exit(1);
@@ -316,11 +316,14 @@ fn main() {
                 std::process::exit(1);
             }
 
+            let loss_csv_path = &args[6];
+
             if let Err(e) = train::train(
                 train_steps,
                 learning_rate,
                 checkpoint_folder,
                 checkpoint_stride,
+                loss_csv_path,
             ) {
                 eprintln!("Error during training: {}", e);
                 std::process::exit(1);
@@ -344,7 +347,7 @@ fn main() {
             eprintln!("Error: Unknown command '{}'", args[1]);
             eprintln!("Usage: {} <train|run> [arguments...]", args[0]);
             eprintln!(
-                "  train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride>  - Train a neural network"
+                "  train <steps> <learning_rate> <checkpoint_folder> <checkpoint_stride> <loss_csv>  - Train a neural network"
             );
             eprintln!("  run <checkpoint> <example_file>                     - Run inference using a checkpoint file");
             std::process::exit(1);
