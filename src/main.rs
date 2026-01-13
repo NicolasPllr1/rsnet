@@ -128,6 +128,36 @@ impl Module for ReluLayer {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct SoftMaxLayer {
+    last_output: Array2<f32>,
+}
+
+impl Module for SoftMaxLayer {
+    fn forward(&mut self, input: Array2<f32>) -> Array2<f32> {
+        let max = input.fold_axis(Axis(1), f32::NEG_INFINITY, |&a, &b| a.max(b));
+        // exp(x - max)
+        let mut out = input.clone() - max.insert_axis(Axis(1));
+        out.mapv_inplace(|x| x.exp());
+
+        let sum = out.sum_axis(Axis(1));
+        let out = input.mapv(|x| x.exp()) / sum;
+
+        // for backprop
+        self.last_output = out.clone();
+
+        out
+    }
+
+    fn backward(&mut self, labels: Array2<f32>) -> Array2<f32> {
+        // NOTE: input to the softmax backward is the labels
+        // labels: (batch_size, K), and there are K=9 classes for MNIST
+
+        // NOTE: ASSUMING cross-entropy loss, which simplifies nicely with softmax during backprop
+        self.last_output.clone() - labels // TODO: maybe broadcast?
+    }
+}
+
 // #[derive(Debug)]
 // struct ConvLayer {
 //     nb_channels: usize,
@@ -198,7 +228,7 @@ enum Layer {
     ReLU(ReluLayer),
     // Conv(ConvLayer),
     // MaxPooling,
-    Softmax,
+    Softmax(SoftMaxLayer),
 }
 
 impl Module for Layer {
@@ -207,7 +237,7 @@ impl Module for Layer {
             Layer::FC(l) => l.forward(input),
             Layer::ReLU(l) => l.forward(input),
             // Layer::Conv(_) => todo!(),
-            Layer::Softmax => todo!(),
+            Layer::Softmax(l) => l.forward(input),
         }
     }
 
@@ -216,7 +246,7 @@ impl Module for Layer {
             Layer::FC(l) => l.backward(next_layer_err),
             Layer::ReLU(l) => l.backward(next_layer_err),
             // Layer::Conv(_) => todo!(),
-            Layer::Softmax => todo!(),
+            Layer::Softmax(l) => l.backward(next_layer_err),
         }
     }
 }
