@@ -136,6 +136,10 @@ impl Module for SoftMaxLayer {
         // NOTE: ASSUMING cross-entropy loss, which simplifies nicely with softmax during backprop
         self.last_output.clone() - labels // TODO: maybe broadcast?
     }
+
+    fn step(&mut self, learning_rate: f32) {
+        todo!()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -160,6 +164,10 @@ impl Module for Layer {
             Layer::ReLU(l) => l.backward(next_layer_err),
             Layer::Softmax(l) => l.backward(next_layer_err),
         }
+    }
+
+    fn step(&mut self, learning_rate: f32) {
+        todo!()
     }
 }
 
