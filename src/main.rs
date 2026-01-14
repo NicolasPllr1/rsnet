@@ -13,7 +13,7 @@ use std::io::{Read, Write};
 
 trait Module {
     fn forward(&mut self, input: Array2<f32>) -> Array2<f32>; // Input is (batch_size, features)
-    fn backward(&mut self, next_layer_err: Array2<f32>) -> Array2<f32>;
+    fn backward(&mut self, dz: Array2<f32>) -> Array2<f32>;
     fn step(&mut self, learning_rate: f32);
 }
 
@@ -63,7 +63,7 @@ impl Module for FcLayer {
         input.dot(&self.weights) + self.bias.clone()
     }
 
-    fn backward(&mut self, next_layer_err: Array2<f32>) -> Array2<f32> {
+    fn backward(&mut self, dz: Array2<f32>) -> Array2<f32> {
         let last_input = self
             .last_input
             .take()
@@ -71,13 +71,13 @@ impl Module for FcLayer {
 
         // Gradients for this layer weights
         // w: (batch_size, input_size)^T X (batch_size, output_size) = (input_size, output_size)
-        self.w_grad = Some(last_input.t().dot(&next_layer_err));
+        self.w_grad = Some(last_input.t().dot(&dz));
         // b: (batch_size, output_size) summed over batch-axis = (output_size)
-        self.b_grad = Some(next_layer_err.sum_axis(Axis(0)));
+        self.b_grad = Some(dz.sum_axis(Axis(0)));
 
         //  What needs to be passed on to the 'previous' layer in the network
         //  (batch_size, output_size) X (input_size, output_size)^T
-        next_layer_err.dot(&self.weights.t()) // (input_size, batch_size)
+        dz.dot(&self.weights.t()) // (input_size, batch_size)
     }
     fn step(&mut self, lr: f32) {
         self.weights -= &(self.w_grad.take().unwrap() * lr);
@@ -108,12 +108,12 @@ impl Module for ReluLayer {
         input.mapv(|x| x.max(0.0))
     }
 
-    fn backward(&mut self, next_layer_err: Array2<f32>) -> Array2<f32> {
+    fn backward(&mut self, dz: Array2<f32>) -> Array2<f32> {
         self.last_input
             .clone()
             .expect("run forward before backward")
             .mapv(|x| if x > 0.0 { 1.0 } else { 0.0 })
-            * next_layer_err
+            * dz
     }
     fn step(&mut self, _learning_rate: f32) {
         self.last_input = None;
@@ -220,7 +220,7 @@ impl Module for Conv2Dlayer {
         todo!()
     }
 
-    fn backward(&mut self, _next_layer_err: Array2<f32>) -> Array2<f32> {
+    fn backward(&mut self, _dz: Array2<f32>) -> Array2<f32> {
         todo!()
     }
 
@@ -247,7 +247,7 @@ impl Module for Layer {
         }
     }
 
-    fn backward(&mut self, next_layer_err: Array2<f32>) -> Array2<f32> {
+    fn backward(&mut self, dz: Array2<f32>) -> Array2<f32> {
         match self {
             Layer::FC(l) => l.backward(dz),
             Layer::Conv(l) => l.backward(dz),
@@ -281,8 +281,8 @@ impl Module for NN {
         x
     }
 
-    fn backward(&mut self, next_layer_err: Array2<f32>) -> Array2<f32> {
-        let mut x = next_layer_err;
+    fn backward(&mut self, dz: Array2<f32>) -> Array2<f32> {
+        let mut x = dz;
         // Iterate layers in reverse order, mutate each as we go
         for layer in self.layers.iter_mut().rev() {
             x = layer.backward(x);
