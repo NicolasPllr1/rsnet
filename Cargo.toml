@@ -8,5 +8,6 @@ ndarray = { version = "0.17.2", features = ["serde"] }
 ndarray-rand = "0.16.0"
 mnist = "0.6"  # Handles MNIST parsing
 indicatif = "0.17"  # Progress bars (like tqdm)
+rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

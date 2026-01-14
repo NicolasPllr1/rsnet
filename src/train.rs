@@ -3,6 +3,8 @@ use ndarray::Array2;
 
 use crate::{load_mnist, FcLayer, Layer, Module, ReluLayer, SoftMaxLayer, NN};
 use ndarray::prelude::*;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -87,8 +89,6 @@ pub fn train(
     // Create checkpoint folder if it doesn't exist
     fs::create_dir_all(checkpoint_folder)?;
 
-    // TODO: Implement training logic
-    // For now, use a hardcoded neural network
     let mut nn = NN {
         layers: vec![
             Layer::FC(FcLayer::new(28 * 28, 3)),
@@ -99,15 +99,19 @@ pub fn train(
     };
 
     // Load MNIST dataset
-    let (train_images, train_labels, _test_images, _test_labels) = load_mnist();
-    println!("Loaded {} training images", train_images.len() / 784);
+    let (train_images, train_labels, test_images, test_labels) = load_mnist();
+    let num_images = train_images.len() / 784;
+    let num_test_images = test_images.len() / 784;
+    println!("Loaded {} training images", num_images);
+    println!("Loaded {} test images", num_test_images);
 
-    // Create iterator over training data
-    let train_data = train_images
-        .chunks(784)
-        .zip(train_labels.iter())
-        .cycle() // Cycle through the dataset for multiple epochs
-        .take(train_steps);
+    // Prepare training data for shuffling per epoch
+    // Collect data into vectors for efficient access
+    let train_data_vec: Vec<(&[u8], &u8)> =
+        train_images.chunks(784).zip(train_labels.iter()).collect();
+
+    // Create indices that will be shuffled for each epoch
+    let mut indices: Vec<usize> = (0..num_images).collect();
 
     // Original main() code from before rebase:
     /*
@@ -161,42 +165,99 @@ pub fn train(
 
     // Create or truncate CSV file and write header
     let mut csv_file = fs::File::create(loss_csv_path)?;
-    writeln!(csv_file, "step,loss")?;
+    writeln!(csv_file, "epoch,loss,accuracy")?;
 
     let optimizer = SGD { learning_rate };
 
-    for (step, (image, label)) in train_data.enumerate() {
-        // Convert image from Vec<u8> to Array2<f32>
-        let img_f32: Vec<f32> = image.iter().map(|&x| x as f32 / 255.0).collect(); // Normalize to [0, 1]
-        let input = Array2::from_shape_vec((1, 784), img_f32)
-            .map_err(|e| format!("Failed to create input array: {}", e))?;
+    const BATCH_SIZE: usize = 128;
+    // Iterate through epochs
+    for epoch in 0..train_steps {
+        // Shuffle indices for this epoch
+        indices.shuffle(&mut thread_rng());
 
-        // Run forward pass (output shape: (batch_size, num_classes))
-        let output = nn.forward(input);
+        // Track loss for this epoch
+        let mut epoch_loss_sum = 0.0;
+        let mut epoch_loss_count = 0;
 
-        // Calculate loss and do backpropagation
-        // The cost function will convert labels to one-hot encoding internally
-        let loss = optimizer.step(&mut nn, cross_entropy, &[*label], &output);
+        // Iterate through shuffled data in batches
+        for batch_indices in indices.chunks(BATCH_SIZE) {
+            let batch_size = batch_indices.len(); // used to catch the remainder
 
-        // Save checkpoint every checkpoint_stride steps
-        if (step + 1) % checkpoint_stride == 0 {
-            let checkpoint_num = (step + 1) / checkpoint_stride;
+            // Collect images and labels for this batch efficiently
+            let mut batch_images = Vec::with_capacity(batch_size * 784);
+            let mut batch_labels = Vec::with_capacity(batch_size);
+
+            for &idx in batch_indices {
+                let (image, label) = train_data_vec[idx];
+                // Normalize and extend image to batch using iterator
+                batch_images.extend(image.iter().map(|&pixel| pixel as f32 / 255.0));
+                batch_labels.push(*label);
+            }
+
+            // Create batch input Array2 with shape (batch_size, 784)
+            let input = Array2::from_shape_vec((batch_size, 784), batch_images)
+                .map_err(|e| format!("Failed to create input array: {}", e))?;
+
+            // Run forward pass (output shape: (batch_size, num_classes))
+            let output = nn.forward(input);
+
+            // Calculate loss and do backpropagation on the batch
+            // The cost function will convert labels to one-hot encoding internally
+            let loss = optimizer.step(&mut nn, cross_entropy, &batch_labels, &output);
+
+            // Accumulate loss for epoch average
+            epoch_loss_sum += loss.mean().unwrap();
+            epoch_loss_count += 1;
+        }
+
+        // Save checkpoint every checkpoint_stride epochs
+        if (epoch + 1) % checkpoint_stride == 0 {
+            let checkpoint_num = (epoch + 1) / checkpoint_stride;
             let checkpoint_path =
                 Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
             nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
 
-            // Get loss at this checkpoint (average over batch)
-            let checkpoint_loss = loss.mean().unwrap();
+            // Get average loss for this epoch
+            let epoch_avg_loss = epoch_loss_sum / epoch_loss_count as f32;
+
+            // Run test loop to calculate accuracy
+            println!("Running test loop...");
+            let mut total_correct = 0;
+            let mut total_samples = 0;
+            for (image, label) in test_images.chunks(784).zip(test_labels.iter()) {
+                // Normalize image
+                let img_f32: Vec<f32> = image.iter().map(|&x| x as f32 / 255.0).collect();
+                let input = Array2::from_shape_vec((1, 784), img_f32)
+                    .map_err(|e| format!("Failed to create test input array: {}", e))?;
+
+                let output = nn.forward(input);
+
+                // Find index of max value (argmax) - predicted label
+                let predicted_label = output
+                    .row(0)
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                    .map(|(idx, _)| idx)
+                    .unwrap() as u8;
+
+                if predicted_label == *label {
+                    total_correct += 1;
+                }
+                total_samples += 1;
+            }
+            let accuracy = total_correct as f32 / total_samples as f32;
 
             // Write to CSV
-            writeln!(csv_file, "{},{}", step + 1, checkpoint_loss)?;
+            writeln!(csv_file, "{},{},{}", epoch + 1, epoch_avg_loss, accuracy)?;
             csv_file.flush()?;
 
             println!(
-                "Saved checkpoint {} at step {} (loss: {:.4})",
+                "Saved checkpoint {} at epoch {} (loss: {:.4}, accuracy: {:.2}%)",
                 checkpoint_num,
-                step + 1,
-                checkpoint_loss
+                epoch + 1,
+                epoch_avg_loss,
+                accuracy * 100.0
             );
         }
     }
