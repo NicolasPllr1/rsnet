@@ -221,11 +221,20 @@ impl Conv2Dlayer {
         return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap());
     }
     fn init_kernel(
-        _in_channels: usize,
-        _out_channels: usize,
-        _kernel_size: (usize, usize),
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size: (usize, usize),
     ) -> Array4<f32> {
-        todo!()
+        let (kernel_size_height, kernel_size_width) = kernel_size;
+        return Array4::random(
+            (
+                in_channels,
+                out_channels,
+                kernel_size_height,
+                kernel_size_width,
+            ),
+            Uniform::new(-1.0, 1.0).unwrap(),
+        );
     }
 }
 
