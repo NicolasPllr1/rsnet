@@ -163,13 +163,18 @@ impl SoftMaxLayer {
 
 impl Module for SoftMaxLayer {
     fn forward(&mut self, input: ArrayD<f32>) -> ArrayD<f32> {
+        let input = input
+            .into_dimensionality::<Ix2>()
+            .expect("Input to sofmax should be 2D");
+
         let max = input.fold_axis(Axis(1), f32::NEG_INFINITY, |&a, &b| a.max(b));
         // exp(x - max)
         let mut out = input.clone() - max.insert_axis(Axis(1));
         out.mapv_inplace(|x| x.exp());
 
         let sum = out.sum_axis(Axis(1));
-        let out = out / sum;
+        let out = out / sum.insert_axis(Axis(1));
+        let out = out.into_dyn();
 
         // for backprop
         self.last_output = Some(
