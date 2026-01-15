@@ -11,24 +11,6 @@ use std::path::Path;
 
 type CostFunction = fn(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>);
 
-fn least_squares(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>) {
-    let batch_size = labels.len();
-    let num_classes = actual_y.ncols();
-
-    // Convert labels to one-hot encoding Array2
-    let mut expected_y = Array2::zeros((batch_size, num_classes));
-    for (i, &label) in labels.iter().enumerate() {
-        expected_y[(i, label as usize)] = 1.0;
-    }
-
-    // Calculate least squares for each sample in batch: (expected - actual)^2
-    let loss = (expected_y.clone() - actual_y)
-        .mapv(|x| x * x)
-        .fold_axis(Axis(1), 0.0, |&a, &b| a + b);
-    let grad = 2.0 * (expected_y.clone() - actual_y);
-    (loss, grad)
-}
-
 fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<f32>) {
     let batch_size = labels.len();
     let num_classes = actual_y.ncols();
@@ -39,7 +21,7 @@ fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<
         expected_y[(i, label as usize)] = 1.0;
     }
 
-    // Calculate least squares for each sample in batch: (expected - actual)^2
+    // Calculate cross-entropy for each sample in batch: -log(p)
     let loss = -(expected_y.clone() * actual_y.ln()).fold_axis(Axis(1), 0.0, |&a, &b| a + b);
 
     (loss, expected_y)
