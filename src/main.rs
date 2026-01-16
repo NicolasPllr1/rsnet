@@ -367,8 +367,17 @@ impl Module for FlattenLayer {
         output
     }
 
-    fn backward(&mut self, _dz: ArrayD<f32>) -> ArrayD<f32> {
-        todo!()
+    fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32> {
+        let last_input = self
+            .last_input
+            .clone()
+            .expect("Need to do a forward pass before the backward");
+        let new_dz = dz
+            .to_shape(last_input.shape())
+            .expect("should be able to reshape the incoming gradient")
+            .to_owned();
+
+        new_dz
     }
     fn step(&mut self, _learning_rate: f32) {
         self.last_input = None;
