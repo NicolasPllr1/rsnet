@@ -208,8 +208,8 @@ struct Conv2Dlayer {
     kernel_size: (usize, usize), // Size of all the 2d convolving kernels used in this layer.
     stride: usize,               // Stride of the convolution. Will be hardocoded to 1 for now.
     // weights
-    k: Array4<f32>, // (in_channels, out_channels, kernel_size)
-    b: Array1<f32>, // (out_channels) (1 bias per output channel)
+    kernels_mat: Array2<f32>, // Layout for img2col: (out_channels, in_channels*k^2)
+    b: Array1<f32>,           // One bias per output channel: (output_channels)
     // for backprop
     last_input: Option<Array4<f32>>, // (batch_size, in_channels, height, width)
     //
@@ -225,7 +225,7 @@ impl Conv2Dlayer {
             kernel_size,
             stride: 1,
             //
-            k: Conv2Dlayer::init_kernel(in_channels, out_channels, kernel_size),
+            kernels_mat: Conv2Dlayer::init_kernel(in_channels, out_channels, kernel_size),
             b: Conv2Dlayer::init_bias(out_channels),
             //
             last_input: None,
@@ -241,15 +241,13 @@ impl Conv2Dlayer {
         in_channels: usize,
         out_channels: usize,
         kernel_size: (usize, usize),
-    ) -> Array4<f32> {
-        let (kernel_size_height, kernel_size_width) = kernel_size;
-        return Array4::random(
-            (
-                in_channels,
-                out_channels,
-                kernel_size_height,
-                kernel_size_width,
-            ),
+    ) -> Array2<f32> {
+        assert!(kernel_size.0 == kernel_size.1);
+        let k = kernel_size.0;
+        // Kernel weights layed-out for the 'img2col' method to compute the convolution.
+        // Dimensions: (out_channels, in_channels*k^2)
+        return Array2::random(
+            (out_channels, in_channels * k * k),
             Uniform::new(-1.0, 1.0).unwrap(),
         );
     }
@@ -288,18 +286,10 @@ impl Module for Conv2Dlayer {
 
         // NOTE: maybe switch batch and channels dim for easier operations?
 
-        // Preparing the 'kernels' matrix for the img2col method
+        // The 'kernels' 2D tensor already has the correct shape for the img2col method.
         // kernels_mat: (out_channels, channels_in * k ^2)
         // - Each row is associated with a single output channel
         // - Each row is the vector of kernel weights associated to every input channels
-
-        // The transformation we want to do:
-        // (in_channels, out_channels, k, k) -> (out_channels, in_channels*k^2)
-        let kernels_mat = self
-            .k
-            .view()
-            .into_shape_with_order((self.out_channels, in_channels * k * k))
-            .expect("Kernel dimensions are compatible with the img2col target shape (out_channels, in_channels*k*k)");
 
         // Preparing the 'patches' matrix for the img2col method.
         // patches_mat: (in_channels * k^2, locations)^T
@@ -331,7 +321,7 @@ impl Module for Conv2Dlayer {
 
             // The "img2col" matmul which implement the convolution as a single GEMM.
             // (out_channels, L) = (out_channels, in_channels*k^2) dot (L, in_channels*k^2)^T
-            let mut flattened_output_feature_map = kernels_mat.dot(&patches_mat.t());
+            let mut flattened_output_feature_map = self.kernels_mat.dot(&patches_mat.t());
 
             // Add bias: same bias per output_channel
             // --> (out_channels, 1) broadcasted to (out_channels, L)
