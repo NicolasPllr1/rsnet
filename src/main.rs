@@ -347,8 +347,49 @@ impl Module for Conv2Dlayer {
         out
     }
 
-    fn backward(&mut self, _dz: ArrayD<f32>) -> ArrayD<f32> {
-        // dz: (batch_size, out_channels, height, width)
+    /// Backward for the convolution layer using the 'img2col' method.
+    ///
+    /// With the 'img2col' method, the convolution forward becomes: output = kernels_mat dot patches_mat,
+    /// With dims: (out_channels, locations) = (out_channels, channels_in * k ^2) dot (channels_in * k ^2, locations)
+    /// This matmul is done on a per-batch basis, i.e. we for-loop over the batch dim
+    /// and process one batch item at a time.
+    /// Then the full output is reshaped to (batch_size, out_channels, height-k+1, width-k+1)
+    ///
+    /// For the backward, we reshape the incoming dz:
+    /// from (out_channels, height-k+1, width-k+1) to (out_channels, locations),
+    /// where locations = (height-k+1)*(width-k+1) = out_h*out_w.
+    ///
+    /// And we make use of the last input saved by the layer, to compute local gradient
+    /// and use the chain rule to get kernels/bias gradient and dL/dx to propagate to the prev
+    /// layer.
+    ///
+    /// Gradients:
+    /// - dL/dkernels_mat = dL/dconv_output * (dconv_output/dkernels_mat)^T = dz dot patches_mat^T.
+    /// In sizes: (out_channels, channels_in * k^2) = (out_channels, locations) dot (channels_in * k^2, locations)^T.
+    /// Note that dz here refered to the reshaped incoming dz.
+    ///
+    /// - DL/dbias : (output_channels) = dz.sum(-1).sum(-1)
+    /// For the bias, we want to reduce for every output channels all the gradient values at every
+    /// location, since the same bias was added to all these location (for a given output channel).
+    ///
+    /// - dL/dinput ? We compute dL/dpatches_mat and then reshape it for the input matrix.
+    /// - DL/dpatches_mat = doutput/dinput dot dL/doutput = kernels_mat dot dz^T
+    /// in sizes: (channels_in * k^2, locations) = (out_channels, in_channels * k^2)^T dot (out_channels, locations)
+    /// Which we then re-shape to: (channels_in, height, width).
+    /// Method to re-shape from (channels_in * k ^2, locations) to (channels_in, height, width):
+    /// 0. Init empty input grad tensor with zeros and shape (channels_in, height, width)
+    /// 1. transpose&reshape the matmul output (dL/dpatches_mat) from (channels_in * k^2, locations) to (locations, channels_in, k, k)
+    /// - Let's call this reshaped tensor grad_patches
+    /// 2. Iterate over the locations. For each location:
+    ///     - we have a (channels_in, k, k) row (the patch which influenced the output at that particular location)
+    ///     - we then populate the input grad tensor, += (accumulation!) the kxk values which are all around this particular location
+    /// Mapping between a patch location and the corresponding coordinate in the input window:
+    /// - The method to do this mapping is to find the top left corner coordinate and go from there
+    /// - For location index l: top_y = l // out_width, top_x = l % out_width
+    /// - And then we can get all the input coordinate using ranges
+    /// - We want to fill this volume (ignoring the batch dim): input_grad[:, top_y..top_y+k,top_x..top_x+k] '=' grad_patches[l]
+    fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32> {
+        // dz: (batch_size, out_channels, out_height, out_width)
         todo!()
     }
 
