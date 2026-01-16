@@ -354,13 +354,15 @@ impl FlattenLayer {
 impl Module for FlattenLayer {
     fn forward(&mut self, input: ArrayD<f32>) -> ArrayD<f32> {
         self.last_input = Some(input.clone());
-
         // Assuming the input is a batch of feature maps
-        // input: (batch_size, in_channels, height, width)
-        // we want output: (batch_size, in_channels*height*width)
+        let input = input
+            .into_dimensionality::<Ix4>()
+            .expect("Flatten layer input should be 4D");
+        let (batch_size, in_channels, height, width) = input.dim();
         let output = input
-            .into_dimensionality::<Ix2>()
+            .to_shape((batch_size, in_channels * height * width))
             .expect("flatten input to 2D array should not fail")
+            .to_owned()
             .into_dyn();
         output
     }
