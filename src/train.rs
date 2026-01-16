@@ -75,11 +75,11 @@ pub fn train(
 
     let mut nn = NN {
         layers: vec![
-            Layer::Conv(Conv2Dlayer::new(1, 10, (5, 5))), // feature maps: (28x28) --> (24,24)
+            Layer::Conv(Conv2Dlayer::new(1, 10, (5, 5))), // feature maps: (1, 28x28) --> (10, 24,24)
             Layer::ReLU(ReluLayer::new()),
-            Layer::Conv(Conv2Dlayer::new(10, 20, (2, 2))), // feature maps: (24x24) --> (23,23)
+            Layer::Conv(Conv2Dlayer::new(10, 20, (2, 2))), // feature maps: (10, 24x24) --> (20, 23,23)
             Layer::ReLU(ReluLayer::new()),
-            Layer::Flatten(FlattenLayer::new()),
+            Layer::Flatten(FlattenLayer::new()), // flatten feature maps into a single 1D vector
             Layer::FC(FcLayer::new(20 * 23 * 23, 10)),
             Layer::Softmax(SoftMaxLayer::new()),
         ],
@@ -181,9 +181,10 @@ pub fn train(
                 batch_labels.push(*label);
             }
 
-            // Create batch input Array2 with shape (batch_size, 784)
-            let input = Array2::from_shape_vec((batch_size, 784), batch_images)
+            // Create batch input Array4 with shape (batch_size, channels=1, 28, 28)
+            let input = Array4::from_shape_vec((batch_size, 1, 28, 28), batch_images)
                 .map_err(|e| format!("Failed to create input array: {}", e))?;
+            println!("[train] input to network: {:?}", input.shape());
 
             // Run forward pass (output shape: (batch_size, num_classes))
             let output = nn.forward(input.into_dyn());
