@@ -24,7 +24,8 @@ fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Array2<
     }
 
     // Calculate cross-entropy for each sample in batch: -log(p)
-    let loss = -(expected_y.clone() * actual_y.ln()).fold_axis(Axis(1), 0.0, |&a, &b| a + b);
+    let log_probs = (actual_y + 1e-10).ln();
+    let loss = -(expected_y.clone() * log_probs).fold_axis(Axis(1), 0.0, |&a, &b| a + b);
 
     (loss, expected_y)
 }
