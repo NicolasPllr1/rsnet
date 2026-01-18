@@ -180,7 +180,7 @@ pub fn train(
             for (image, label) in test_images.chunks(784).zip(test_labels.iter()).progress() {
                 // Normalize image
                 let img_f32: Vec<f32> = image.iter().map(|&x| x as f32 / 255.0).collect();
-                let input = Array2::from_shape_vec((1, 784), img_f32)
+                let input = Array4::from_shape_vec((1, 1, 28, 28), img_f32)
                     .map_err(|e| format!("Failed to create test input array: {}", e))?;
 
                 let output = nn.forward(input.into_dyn());
