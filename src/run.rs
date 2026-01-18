@@ -1,4 +1,4 @@
-use crate::{Module, NN};
+use crate::model::{Module, NN};
 use ndarray::prelude::*;
 use ndarray::Array2;
 use std::fs;

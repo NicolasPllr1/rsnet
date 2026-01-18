@@ -1,10 +1,12 @@
+use crate::layers::{
+    Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
+};
+use crate::mnist_dataset::load_mnist;
+use crate::model::{Module, NN};
+
 use indicatif::ProgressIterator;
 use ndarray::Array2;
 
-use crate::{
-    load_mnist, Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, Module, ReluLayer,
-    SoftMaxLayer, NN,
-};
 use ndarray::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
