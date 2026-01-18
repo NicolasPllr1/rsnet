@@ -64,7 +64,7 @@ impl Optimizer for SGD {
     }
 }
 
-/// Train a neural network (stub)
+/// Train a neural network
 pub fn train(
     train_steps: usize,
     learning_rate: f32,
@@ -139,7 +139,6 @@ pub fn train(
             // Create batch input Array4 with shape (batch_size, channels=1, 28, 28)
             let input = Array4::from_shape_vec((batch_size, 1, 28, 28), batch_images)
                 .map_err(|e| format!("Failed to create input array: {}", e))?;
-            println!("[train] input to network: {:?}", input.shape());
 
             // Run forward pass (output shape: (batch_size, num_classes))
             let output = nn.forward(input.into_dyn());
@@ -155,6 +154,9 @@ pub fn train(
                     .expect("Output should be castable to 2D"),
             );
 
+            let avg_loss = loss.sum() / batch_size as f32;
+            println!("[BATCH LOSS] {:.4}", avg_loss);
+
             // Accumulate loss for epoch average
             epoch_loss_sum += loss.mean().unwrap();
             epoch_loss_count += 1;
@@ -169,6 +171,7 @@ pub fn train(
 
             // Get average loss for this epoch
             let epoch_avg_loss = epoch_loss_sum / epoch_loss_count as f32;
+            println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
 
             // Run test loop to calculate accuracy
             println!("Running test loop...");
@@ -199,6 +202,7 @@ pub fn train(
                 total_samples += 1;
             }
             let accuracy = total_correct as f32 / total_samples as f32;
+            println!("[TEST ACC] {:.3}", accuracy);
 
             // Write to CSV
             writeln!(csv_file, "{},{},{}", epoch + 1, epoch_avg_loss, accuracy)?;
