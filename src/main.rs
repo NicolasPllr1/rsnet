@@ -470,29 +470,37 @@ impl Module for Conv2Dlayer {
         let width = out_width + k - 1;
         // First compute dL/dpatches.
         // Will accumulate gradients over the batch dim
-        let mut acc_dpatches = Array2::<f32>::zeros((self.in_channels * k * k, nb_locations));
-        // Accumulate the gradient accross the batch
-        for sample_dz in dz.outer_iter() {
+        let mut dpatches =
+            Array3::<f32>::zeros((batch_size, self.in_channels * k * k, nb_locations));
+        // Compute gradient for each sample in the batch
+        for batch_idx in 0..batch_size {
+            let dz_sample = dz.slice(s![batch_idx, .., ..]);
             // (in_channels*k^2, locations) = (out_channels, in_channels*k^2)^T dot (out_channels, locations)
-            acc_dpatches += &self.kernels_mat.t().dot(&sample_dz);
+            let sample_patches_grad = self.kernels_mat.t().dot(&dz_sample);
+            dpatches
+                .slice_mut(s![batch_idx, .., ..])
+                .assign(&sample_patches_grad);
         }
 
         // Building the dL/dinput from the dL/dpatches
-        let mut dinput = Array3::zeros((self.in_channels, height, width));
+        let mut dinput = Array4::zeros((batch_size, self.in_channels, height, width));
 
-        // Transpose / reshape dpatches from (in_channels * k^2, locations)
-        // to (locations, in_channels, k, k)
-        let binding = acc_dpatches.t();
-        let grad_patches = binding.to_shape((nb_locations, self.in_channels, k, k)).expect("[backward] [conv] img2col patches gradient is compatible with the shape (locations, in_channels, k, k)");
+        // Transpose / reshape dpatches from (batch_size, in_channels * k^2, locations)
+        // to (batch_size, locations, in_channels, k, k)
+        let binding = dpatches.permuted_axes([0, 2, 1]); // (batch_size, locations, in_channels * k^2)
+        let all_grad_patches = binding.to_shape((batch_size, nb_locations, self.in_channels, k, k)).expect("[backward] [conv] img2col patches gradient is compatible with the shape (batch_size, locations, in_channels, k, k)");
         // Iterating over the patches
-        for (patch_idx, patch_grad) in grad_patches.outer_iter().enumerate() {
-            // patch top corner position
-            let top_y = patch_idx / out_width;
-            let top_x = patch_idx - top_y * out_width; // = patch_idx modulo out_width
-            dinput
-                .slice_mut(s![.., top_y..top_y + k, top_x..top_x + k])
-                .assign(&patch_grad);
-            // accumulating the gradient within dinput
+        for batch_idx in 0..batch_size {
+            let grad_patches = all_grad_patches.slice(s![batch_idx, .., .., .., ..]);
+            for (patch_idx, patch_grad) in grad_patches.outer_iter().enumerate() {
+                // patch top corner position
+                let top_y = patch_idx / out_width;
+                let top_x = patch_idx - top_y * out_width; // = patch_idx modulo out_width
+                let mut dinput_slice =
+                    dinput.slice_mut(s![batch_idx, .., top_y..top_y + k, top_x..top_x + k]);
+                dinput_slice += &patch_grad;
+                // accumulating the gradient within dinput
+            }
         }
 
         dinput.into_dyn()
