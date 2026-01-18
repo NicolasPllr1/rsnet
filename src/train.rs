@@ -2,7 +2,8 @@
 use ndarray::Array2;
 
 use crate::{
-    load_mnist, Conv2Dlayer, FcLayer, FlattenLayer, Layer, Module, ReluLayer, SoftMaxLayer, NN,
+    load_mnist, Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, Module, ReluLayer,
+    SoftMaxLayer, NN,
 };
 use ndarray::prelude::*;
 use rand::seq::SliceRandom;
@@ -76,12 +77,15 @@ pub fn train(
 
     let mut nn = NN {
         layers: vec![
-            Layer::Conv(Conv2Dlayer::new(1, 10, (5, 5))), // feature maps: (1, 28x28) --> (10, 24,24)
+            Layer::Conv(Conv2Dlayer::new(1, 5, (5, 5))), // Input image (1, 28x28) --> (5, 24, 24)
             Layer::ReLU(ReluLayer::new()),
-            Layer::Conv(Conv2Dlayer::new(10, 20, (2, 2))), // feature maps: (10, 24x24) --> (20, 23,23)
+            Layer::Pool(MaxPoolLayer::new((4, 4))), // (5, 24, 24) --> (5, 6, 6)
+            Layer::Conv(Conv2Dlayer::new(5, 5, (3, 3))), // (5, 6, 6) --> (5, 4, 4)
             Layer::ReLU(ReluLayer::new()),
-            Layer::Flatten(FlattenLayer::new()), // flatten feature maps into a single 1D vector
-            Layer::FC(FcLayer::new(20 * 23 * 23, 10)),
+            Layer::Conv(Conv2Dlayer::new(5, 5, (2, 2))), // (5, 4, 4) --> (5, 3, 3)
+            Layer::ReLU(ReluLayer::new()),
+            Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
+            Layer::FC(FcLayer::new(5 * 3 * 3, 10)),
             Layer::Softmax(SoftMaxLayer::new()),
         ],
     };
