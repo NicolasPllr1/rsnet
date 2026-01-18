@@ -8,6 +8,7 @@ use mnist::MnistBuilder;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
 use serde::{Deserialize, Serialize};
+use std::f32;
 use std::fs::File;
 use std::io::{Read, Write};
 
@@ -57,7 +58,7 @@ impl FcLayer {
             input_size,
             output_size,
             weights: FcLayer::init_2d_mat(input_size, output_size),
-            bias: FcLayer::init_bias(output_size),
+            bias: FcLayer::init_bias(input_size, output_size),
             //
             last_input: None,
             //
@@ -65,11 +66,16 @@ impl FcLayer {
             b_grad: None,
         }
     }
-    fn init_bias(output_size: usize) -> Array1<f32> {
-        return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap());
+    fn get_scale(input_size: usize) -> f32 {
+        (2.0 / input_size as f32).sqrt()
+    }
+    fn init_bias(input_size: usize, output_size: usize) -> Array1<f32> {
+        return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap())
+            * FcLayer::get_scale(input_size);
     }
     fn init_2d_mat(input_size: usize, output_size: usize) -> Array2<f32> {
-        return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap());
+        return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap())
+            * FcLayer::get_scale(input_size);
     }
 }
 
@@ -226,7 +232,7 @@ impl Conv2Dlayer {
             stride: 1,
             //
             kernels_mat: Conv2Dlayer::init_kernel(in_channels, out_channels, kernel_size),
-            b: Conv2Dlayer::init_bias(out_channels),
+            b: Conv2Dlayer::init_bias(in_channels, out_channels, kernel_size),
             //
             last_input: None,
             //
@@ -234,8 +240,17 @@ impl Conv2Dlayer {
             b_grad: None,
         }
     }
-    fn init_bias(output_size: usize) -> Array1<f32> {
-        return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap());
+    fn get_scale(in_channels: usize, kernel_size: (usize, usize)) -> f32 {
+        (2.0 / (in_channels * kernel_size.0 * kernel_size.1) as f32).sqrt()
+    }
+
+    fn init_bias(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size: (usize, usize),
+    ) -> Array1<f32> {
+        return Array1::random(out_channels, Uniform::new(-1.0, 1.0).unwrap())
+            * Conv2Dlayer::get_scale(in_channels, kernel_size);
     }
     fn init_kernel(
         in_channels: usize,
@@ -249,7 +264,7 @@ impl Conv2Dlayer {
         return Array2::random(
             (out_channels, in_channels * k * k),
             Uniform::new(-1.0, 1.0).unwrap(),
-        );
+        ) * Conv2Dlayer::get_scale(in_channels, kernel_size);
     }
 }
 
