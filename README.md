@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="./MNIST_dataset_illustration.png" alt="MNIST dataset illustration" width="200">
+    <img src="./MNIST_dataset_illustration.png" alt="MNIST dataset illustration" width="400">
 </p>
 
 # Neural Network from Scratch
