@@ -105,9 +105,10 @@ impl Module for FcLayer {
 
         // Gradients for this layer weights
         // w: (batch_size, input_size)^T X (batch_size, output_size) = (input_size, output_size)
-        self.w_grad = Some(last_input.t().dot(&dz));
+        let batch_size = dz.shape()[0] as f32;
+        self.w_grad = Some(last_input.t().dot(&dz) / batch_size);
         // b: (batch_size, output_size) summed over batch-axis = (output_size)
-        self.b_grad = Some(dz.sum_axis(Axis(0)));
+        self.b_grad = Some(dz.sum_axis(Axis(0)) / batch_size);
 
         //  What needs to be passed on to the 'previous' layer in the network
         //  (batch_size, output_size) X (input_size, output_size)^T
@@ -452,12 +453,16 @@ impl Module for Conv2Dlayer {
                 .dot(&last_patches_mat.slice(s![batch_idx, .., ..]));
         }
 
+        // Average over the batch
+        let dkernels_mat = dkernels_mat / batch_size as f32;
+
         self.k_grad = Some(dkernels_mat);
 
         // dL/dbias
         self.b_grad = Some(
             dz.fold_axis(Axis(2), 0.0, |&a, &b| a + b) // sum over locations
-                .fold_axis(Axis(0), 0.0, |&a, &b| a + b), // sum over batch
+                .fold_axis(Axis(0), 0.0, |&a, &b| a + b)
+                / batch_size as f32, // sum over batch
         );
 
         // dL/dinput, to be returned for the prev. layer to use for its own backprop
