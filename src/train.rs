@@ -68,7 +68,9 @@ impl Optimizer for SGD {
 
 /// Train a neural network
 pub fn train(
-    train_steps: usize,
+    mut nn: NN,
+    batch_size: usize,
+    nb_epochs: usize,
     learning_rate: f32,
     checkpoint_folder: &str,
     checkpoint_stride: usize,
@@ -113,9 +115,9 @@ pub fn train(
 
     let optimizer = SGD { learning_rate };
 
-    const BATCH_SIZE: usize = 128;
     // Iterate through epochs
-    for epoch in (0..train_steps).progress() {
+    for epoch in (0..nb_epochs).progress() {
+        let epoch_start = std::time::Instant::now();
         // Shuffle indices for this epoch
         indices.shuffle(&mut thread_rng());
 
