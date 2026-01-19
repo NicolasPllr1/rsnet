@@ -39,17 +39,17 @@ def collect_data(label: str):
         h, w, _ = frame.shape
 
         # Square ROI in the center
-        size = 720
+        size = min(h, w, 720)  # ensure we don't go out of frame bounds
         x1, y1 = (w // 2 - size // 2), (h // 2 - size // 2)
         x2, y2 = x1 + size, y1 + size
 
-        # Draw ROI box
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-
-        # Extract and resize ROI
+        # Extract ROI before drawing rectangle so the box isn't in the data
         roi = frame[y1:y2, x1:x2]
-        # Keep RGB (note that OpenCV uses BGR by default, we keep it as is)
         resized = cv2.resize(roi, TARGET_SIZE, interpolation=cv2.INTER_AREA)
+
+        # Draw ROI box for display only
+        display_frame = frame.copy()
+        cv2.rectangle(display_frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
         cv2.imshow("Collector", frame)
         cv2.imshow("Preview (Input to CNN)", resized)
