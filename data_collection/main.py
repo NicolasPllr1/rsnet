@@ -29,6 +29,7 @@ def collect_data(label: str):
     print(f"Collecting for class: {label}")
     print("Commands: 's' to save image, 'q' to finish class")
 
+    count = 1
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -57,9 +58,13 @@ def collect_data(label: str):
         key = cv2.waitKey(1) & 0xFF
         if key == ord("s"):
             timestamp = int(time.time() * 1000)
-            filename = save_path / f"{timestamp}.png"
-            cv2.imwrite(filename, resized)
-            print(f"Saved: {filename}")
+            filename = save_path / f"{count}_{timestamp}.png"
+            success = cv2.imwrite(filename, resized)
+            if success:
+                print(f"Saved: {filename}", flush=True)
+                count += 1
+            else:
+                print(f"Failed to save: {filename}", flush=True)
         elif key == ord("q"):
             break
 
