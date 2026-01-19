@@ -1,6 +1,7 @@
 pub mod layers;
 pub mod mnist_dataset;
 pub mod model;
+pub mod optim;
 pub mod run;
 pub mod train;
 
