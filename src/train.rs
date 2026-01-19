@@ -1,6 +1,3 @@
-use crate::layers::{
-    Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
-};
 use crate::mnist_dataset::load_mnist;
 use crate::model::{Module, NN};
 
@@ -78,21 +75,6 @@ pub fn train(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create checkpoint folder if it doesn't exist
     fs::create_dir_all(checkpoint_folder)?;
-
-    let mut nn = NN {
-        layers: vec![
-            Layer::Conv(Conv2Dlayer::new(1, 5, (5, 5))), // Input image (1, 28x28) --> (5, 24, 24)
-            Layer::ReLU(ReluLayer::new()),
-            Layer::Pool(MaxPoolLayer::new((4, 4))), // (5, 24, 24) --> (5, 6, 6)
-            Layer::Conv(Conv2Dlayer::new(5, 5, (3, 3))), // (5, 6, 6) --> (5, 4, 4)
-            Layer::ReLU(ReluLayer::new()),
-            Layer::Conv(Conv2Dlayer::new(5, 5, (2, 2))), // (5, 4, 4) --> (5, 3, 3)
-            Layer::ReLU(ReluLayer::new()),
-            Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
-            Layer::FC(FcLayer::new(5 * 3 * 3, 10)),
-            Layer::Softmax(SoftMaxLayer::new()),
-        ],
-    };
 
     // Load MNIST dataset
     let (train_images, train_labels, test_images, test_labels) = load_mnist();

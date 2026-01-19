@@ -1,6 +1,11 @@
 use mnist_rust::run;
 use mnist_rust::train;
 
+use mnist_rust::layers::{
+    Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
+};
+use mnist_rust::model::NN;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -48,7 +53,23 @@ fn main() {
             checkpoint_stride,
             loss_csv_path,
         } => {
+            // The neural network to train
+            let nn = NN {
+                layers: vec![
+                    Layer::Conv(Conv2Dlayer::new(1, 5, (5, 5))), // Input image (1, 28x28) --> (5, 24, 24)
+                    Layer::ReLU(ReluLayer::new()),
+                    Layer::Pool(MaxPoolLayer::new((4, 4))), // (5, 24, 24) --> (5, 6, 6)
+                    Layer::Conv(Conv2Dlayer::new(5, 5, (3, 3))), // (5, 6, 6) --> (5, 4, 4)
+                    Layer::ReLU(ReluLayer::new()),
+                    Layer::Conv(Conv2Dlayer::new(5, 5, (2, 2))), // (5, 4, 4) --> (5, 3, 3)
+                    Layer::ReLU(ReluLayer::new()),
+                    Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
+                    Layer::FC(FcLayer::new(5 * 3 * 3, 10)),
+                    Layer::Softmax(SoftMaxLayer::new()),
+                ],
+            };
             if let Err(e) = train::train(
+                nn,
                 batch_size,
                 nb_epochs,
                 learning_rate,
