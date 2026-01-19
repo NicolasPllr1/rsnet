@@ -94,7 +94,7 @@ pub fn train(
 
     // Create or truncate CSV file and write header
     let mut csv_file = fs::File::create(loss_csv_path)?;
-    writeln!(csv_file, "epoch,loss,accuracy")?;
+    writeln!(csv_file, "epoch,loss,duration,accuracy")?;
 
     let optimizer = SGD { learning_rate };
 
@@ -143,9 +143,11 @@ pub fn train(
             );
 
             if batch_idx % 10 == 0 {
+                let duration = step_start.elapsed();
                 let avg_loss = loss.sum() / batch_size as f32;
                 // This gives you granular speed data per batch
                 if DEBUG {
+                    println!("[BATCH] Step {} took: {:?}", batch_idx, duration);
                     println!("[BATCH] Step {} loss: {:.4}", batch_idx, avg_loss);
                 }
             }
@@ -154,6 +156,8 @@ pub fn train(
             epoch_loss_sum += loss.mean().unwrap();
             epoch_loss_count += 1;
         }
+
+        let epoch_duration = epoch_start.elapsed();
 
         // Save checkpoint every checkpoint_stride epochs
         if (epoch + 1) % checkpoint_stride == 0 {
@@ -164,8 +168,8 @@ pub fn train(
 
             // Get average loss for this epoch
             let epoch_avg_loss = epoch_loss_sum / epoch_loss_count as f32;
-            println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
             if DEBUG {
+                println!("[EPOCH DURATION] {:?}", epoch_duration);
                 println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
             }
 
@@ -205,16 +209,16 @@ pub fn train(
             }
 
             // Write to CSV
-            writeln!(csv_file, "{},{},{}", epoch + 1, epoch_avg_loss, accuracy)?;
-            csv_file.flush()?;
-
-            println!(
-                "Saved checkpoint {} at epoch {} (loss: {:.4}, accuracy: {:.2}%)",
-                checkpoint_num,
+            writeln!(
+                csv_file,
+                "{},{},{:?},{}",
                 epoch + 1,
                 epoch_avg_loss,
-                accuracy * 100.0
-            );
+                epoch_duration,
+                accuracy
+            )?;
+            csv_file.flush()?;
+
             if DEBUG {
                 println!(
                     "Saved checkpoint {} at epoch {} (loss: {:.4}, accuracy: {:.2}%)",
