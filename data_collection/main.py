@@ -15,8 +15,8 @@ if not DATA_DIR.exists():
 
 def collect_data(label: str):
     save_path = DATA_DIR / label
-    if not DATA_DIR.exists():
-        print(f"Creating {save_path=} for {label=}")
+    if not save_path.exists():
+        print(f"Creating class ({label=}) directory: {save_path}")
         save_path.mkdir()
 
     cap = cv2.VideoCapture(0)
