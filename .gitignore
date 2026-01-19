@@ -3,3 +3,6 @@
 loss.csv
 /checkpoints*
 /plots
+
+# Macos
+.DS_Store
