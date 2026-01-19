@@ -20,6 +20,12 @@ def collect_data(label: str):
         save_path.mkdir()
 
     cap = cv2.VideoCapture(0)
+
+    # Check if webcam opened correctly
+    if not cap.isOpened():
+        print("Error: Could not open webcam.")
+        return
+
     print(f"Collecting for class: {label}")
     print("Commands: 's' to save image, 'q' to finish class")
 
