@@ -1,5 +1,6 @@
 use crate::mnist_dataset::load_mnist;
 use crate::model::{Module, NN};
+use crate::DEBUG;
 
 use indicatif::ProgressIterator;
 use ndarray::Array2;
@@ -108,7 +109,8 @@ pub fn train(
         let mut epoch_loss_count = 0;
 
         // Iterate through shuffled data in batches
-        for batch_indices in indices.chunks(BATCH_SIZE).progress() {
+        for (batch_idx, batch_indices) in indices.chunks(batch_size).enumerate().progress() {
+            let step_start = std::time::Instant::now();
             let batch_size = batch_indices.len(); // used to catch the remainder
 
             // Collect images and labels for this batch efficiently
@@ -140,8 +142,13 @@ pub fn train(
                     .expect("Output should be castable to 2D"),
             );
 
-            let avg_loss = loss.sum() / batch_size as f32;
-            println!("[BATCH LOSS] {:.4}", avg_loss);
+            if batch_idx % 10 == 0 {
+                let avg_loss = loss.sum() / batch_size as f32;
+                // This gives you granular speed data per batch
+                if DEBUG {
+                    println!("[BATCH] Step {} loss: {:.4}", batch_idx, avg_loss);
+                }
+            }
 
             // Accumulate loss for epoch average
             epoch_loss_sum += loss.mean().unwrap();
@@ -158,9 +165,14 @@ pub fn train(
             // Get average loss for this epoch
             let epoch_avg_loss = epoch_loss_sum / epoch_loss_count as f32;
             println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
+            if DEBUG {
+                println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
+            }
 
             // Run test loop to calculate accuracy
-            println!("Running test loop...");
+            if DEBUG {
+                println!("Running test loop...");
+            }
             let mut total_correct = 0;
             let mut total_samples = 0;
             for (image, label) in test_images.chunks(784).zip(test_labels.iter()).progress() {
@@ -188,7 +200,9 @@ pub fn train(
                 total_samples += 1;
             }
             let accuracy = total_correct as f32 / total_samples as f32;
-            println!("[TEST ACC] {:.3}", accuracy);
+            if DEBUG {
+                println!("[TEST ACC] {:.3}", accuracy);
+            }
 
             // Write to CSV
             writeln!(csv_file, "{},{},{}", epoch + 1, epoch_avg_loss, accuracy)?;
@@ -201,6 +215,15 @@ pub fn train(
                 epoch_avg_loss,
                 accuracy * 100.0
             );
+            if DEBUG {
+                println!(
+                    "Saved checkpoint {} at epoch {} (loss: {:.4}, accuracy: {:.2}%)",
+                    checkpoint_num,
+                    epoch + 1,
+                    epoch_avg_loss,
+                    accuracy * 100.0
+                );
+            }
         }
     }
 
