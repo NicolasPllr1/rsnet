@@ -1,6 +1,6 @@
 /target
 
-loss.csv
+*.csv
 /checkpoints*
 /plots
 
