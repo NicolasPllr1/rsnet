@@ -37,7 +37,7 @@ pub fn train(
 
     let mut indices: Vec<usize> = (0..train_dataset.samples.len()).collect();
 
-    let (in_channels, h, w) = (3, 224, 224); // Downscaled size
+    let (in_channels, h, w) = (3, 128, 128); // Downscaled size
 
     // Create or truncate CSV file and write header
     let mut csv_file = fs::File::create(loss_csv_path)?;
