@@ -13,7 +13,8 @@ pub fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Arr
     // Convert labels to one-hot encoding Array2
     let mut expected_y = Array2::zeros((batch_size, num_classes));
     for (i, &label) in labels.iter().enumerate() {
-        expected_y[(i, label as usize)] = 1.0;
+        let label_idx = label - 1;
+        expected_y[(i, label_idx as usize)] = 1.0;
     }
 
     // Calculate cross-entropy for each sample in batch: -log(p)

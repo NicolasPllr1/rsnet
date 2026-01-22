@@ -1,3 +1,4 @@
+pub mod custom_dataset;
 pub mod layers;
 pub mod mnist_dataset;
 pub mod model;

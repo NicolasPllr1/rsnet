@@ -21,6 +21,8 @@ enum Commands {
     Train {
         #[arg(long, default_value_t = 128)]
         batch_size: usize,
+        #[arg(long, short = 'd')]
+        train_data_dir: String,
         #[arg(long, default_value_t = 10)]
         nb_epochs: usize,
         #[arg(long, default_value_t = 0.003)]
@@ -47,6 +49,7 @@ fn main() {
     match cli.command {
         Commands::Train {
             batch_size,
+            train_data_dir,
             nb_epochs,
             learning_rate,
             checkpoint_folder,
@@ -56,20 +59,23 @@ fn main() {
             // The neural network to train
             let nn = NN {
                 layers: vec![
-                    Layer::Conv(Conv2Dlayer::new(1, 5, (5, 5))), // Input image (1, 28x28) --> (5, 24, 24)
+                    Layer::Conv(Conv2Dlayer::new(3, 5, (5, 5))), // Input image (1, 224x224) --> (5, 220, 220)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((4, 4))), // (5, 24, 24) --> (5, 6, 6)
-                    Layer::Conv(Conv2Dlayer::new(5, 5, (3, 3))), // (5, 6, 6) --> (5, 4, 4)
+                    Layer::Pool(MaxPoolLayer::new((4, 4))), // (5, 220, 220) --> (5, 55, 55)
+                    Layer::Conv(Conv2Dlayer::new(5, 10, (6, 6))), // (5, 55, 55) --> (10, 50, 50)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Conv(Conv2Dlayer::new(5, 5, (2, 2))), // (5, 4, 4) --> (5, 3, 3)
+                    Layer::Pool(MaxPoolLayer::new((5, 5))), // (10, 50, 50) --> (10, 10, 10)
+                    Layer::Conv(Conv2Dlayer::new(10, 5, (3, 3))), // (10, 10, 10) --> (5, 8, 8)
                     Layer::ReLU(ReluLayer::new()),
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (5, 8, 8) --> (5, 4, 4)
                     Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
-                    Layer::FC(FcLayer::new(5 * 3 * 3, 10)),
+                    Layer::FC(FcLayer::new(5 * 4 * 4, 5)), // Classes: {1, 2, 3, 5}
                     Layer::Softmax(SoftMaxLayer::new()),
                 ],
             };
             if let Err(e) = train::train(
                 nn,
+                &train_data_dir,
                 batch_size,
                 nb_epochs,
                 learning_rate,

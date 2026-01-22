@@ -6,3 +6,5 @@ loss.csv
 
 # Macos
 .DS_Store
+
+*/*dataset*/*

@@ -1,4 +1,5 @@
-use crate::mnist_dataset::load_mnist;
+// use crate::mnist_dataset::load_mnist;
+use crate::custom_dataset::{load_metadata, process_image, Dataset};
 use crate::model::{Module, NN};
 use crate::optim::{cross_entropy, Optimizer, SGD};
 use crate::DEBUG;
@@ -9,12 +10,15 @@ use ndarray::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::fs;
+use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::time::Duration;
 
 /// Train a neural network
 pub fn train(
     mut nn: NN,
+    data_dir: &str,
     batch_size: usize,
     nb_epochs: usize,
     learning_rate: f32,
@@ -26,19 +30,14 @@ pub fn train(
     fs::create_dir_all(checkpoint_folder)?;
 
     // Load MNIST dataset
-    let (train_images, train_labels, test_images, test_labels) = load_mnist();
-    let num_images = train_images.len() / 784;
-    let num_test_images = test_images.len() / 784;
-    println!("Loaded {} training images", num_images);
-    println!("Loaded {} test images", num_test_images);
+    // let (train_images, train_labels, test_images, test_labels) = load_mnist();
+    let (train_dataset, test_dataset) = load_metadata(&data_dir, Some(0.1));
+    println!("[TRAIN] len: {}", train_dataset.samples.len());
+    println!("[TEST] len: {}", test_dataset.samples.len());
 
-    // Prepare training data for shuffling per epoch
-    // Collect data into vectors for efficient access
-    let train_data_vec: Vec<(&[u8], &u8)> =
-        train_images.chunks(784).zip(train_labels.iter()).collect();
+    let mut indices: Vec<usize> = (0..train_dataset.samples.len()).collect();
 
-    // Create indices that will be shuffled for each epoch
-    let mut indices: Vec<usize> = (0..num_images).collect();
+    let (in_channels, h, w) = (3, 224, 224); // Downscaled size
 
     // Create or truncate CSV file and write header
     let mut csv_file = fs::File::create(loss_csv_path)?;
@@ -47,33 +46,33 @@ pub fn train(
     let optimizer = SGD { learning_rate };
 
     // Iterate through epochs
-    for epoch in (0..nb_epochs).progress() {
-        let epoch_start = std::time::Instant::now();
+    for _epoch in (0..nb_epochs).progress() {
         // Shuffle indices for this epoch
         indices.shuffle(&mut thread_rng());
 
-        // Track loss for this epoch
-        let mut epoch_loss_sum = 0.0;
-        let mut epoch_loss_count = 0;
+        // Track loss running loss
+        let mut running_loss = 0.0;
+        let mut optim_step = 0;
+        let mut stride_duration = std::time::Instant::now();
 
         // Iterate through shuffled data in batches
         for (batch_idx, batch_indices) in indices.chunks(batch_size).enumerate().progress() {
             let step_start = std::time::Instant::now();
-            let batch_size = batch_indices.len(); // used to catch the remainder
 
-            // Collect images and labels for this batch efficiently
-            let mut batch_images = Vec::with_capacity(batch_size * 784);
-            let mut batch_labels = Vec::with_capacity(batch_size);
+            let mut batch_images = Vec::with_capacity(batch_size * 3 * h * w);
+            let mut batch_labels = Vec::new();
 
             for &idx in batch_indices {
-                let (image, label) = train_data_vec[idx];
-                // Normalize and extend image to batch using iterator
-                batch_images.extend(image.iter().map(|&pixel| pixel as f32 / 255.0));
+                let (path, label) = &train_dataset.samples[idx];
+                // Actual loading of the image
+                let processed_pixels = process_image(path, h as u32, w as u32);
+
+                batch_images.extend(processed_pixels);
                 batch_labels.push(*label);
             }
 
-            // Create batch input Array4 with shape (batch_size, channels=1, 28, 28)
-            let input = Array4::from_shape_vec((batch_size, 1, 28, 28), batch_images)
+            // Create batch input Array4 with shape (batch_size, in_channels, h, w)
+            let input = Array4::from_shape_vec((batch_size, in_channels, h, w), batch_images)
                 .map_err(|e| format!("Failed to create input array: {}", e))?;
 
             // Run forward pass (output shape: (batch_size, num_classes))
@@ -101,85 +100,115 @@ pub fn train(
             }
 
             // Accumulate loss for epoch average
-            epoch_loss_sum += loss.mean().unwrap();
-            epoch_loss_count += 1;
-        }
+            running_loss += loss.mean().unwrap();
 
-        let epoch_duration = epoch_start.elapsed();
+            optim_step += 1;
 
-        // Save checkpoint every checkpoint_stride epochs
-        if (epoch + 1) % checkpoint_stride == 0 {
-            let checkpoint_num = (epoch + 1) / checkpoint_stride;
-            let checkpoint_path =
-                Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
-            nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
+            // Save checkpoint every checkpoint_stride optimization steps
+            if optim_step % checkpoint_stride == 0 {
+                validation(
+                    &mut nn,
+                    running_loss,
+                    optim_step,
+                    stride_duration.elapsed(),
+                    checkpoint_stride,
+                    &test_dataset,
+                    checkpoint_folder,
+                    &mut csv_file,
+                    in_channels,
+                    h,
+                    w,
+                )?;
 
-            // Get average loss for this epoch
-            let epoch_avg_loss = epoch_loss_sum / epoch_loss_count as f32;
-            if DEBUG {
-                println!("[EPOCH DURATION] {:?}", epoch_duration);
-                println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
-            }
-
-            // Run test loop to calculate accuracy
-            if DEBUG {
-                println!("Running test loop...");
-            }
-            let mut total_correct = 0;
-            let mut total_samples = 0;
-            for (image, label) in test_images.chunks(784).zip(test_labels.iter()).progress() {
-                // Normalize image
-                let img_f32: Vec<f32> = image.iter().map(|&x| x as f32 / 255.0).collect();
-                let input = Array4::from_shape_vec((1, 1, 28, 28), img_f32)
-                    .map_err(|e| format!("Failed to create test input array: {}", e))?;
-
-                let output = nn.forward(input.into_dyn());
-
-                // Find index of max value (argmax) - predicted label
-                let predicted_label = output
-                    .into_dimensionality::<Ix2>()
-                    .expect("Output shoud be castable to 2D")
-                    .row(0)
-                    .iter()
-                    .enumerate()
-                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-                    .map(|(idx, _)| idx)
-                    .unwrap() as u8;
-
-                if predicted_label == *label {
-                    total_correct += 1;
-                }
-                total_samples += 1;
-            }
-            let accuracy = total_correct as f32 / total_samples as f32;
-            if DEBUG {
-                println!("[TEST ACC] {:.3}", accuracy);
-            }
-
-            // Write to CSV
-            writeln!(
-                csv_file,
-                "{},{},{:?},{}",
-                epoch + 1,
-                epoch_avg_loss,
-                epoch_duration,
-                accuracy
-            )?;
-            csv_file.flush()?;
-
-            if DEBUG {
-                println!(
-                    "Saved checkpoint {} at epoch {} (loss: {:.4}, accuracy: {:.2}%)",
-                    checkpoint_num,
-                    epoch + 1,
-                    epoch_avg_loss,
-                    accuracy * 100.0
-                );
+                // Reset
+                running_loss = 0.0;
+                stride_duration = std::time::Instant::now();
             }
         }
     }
 
     println!("Training completed!");
     println!("Checkpoint folder: {}", checkpoint_folder);
+    Ok(())
+}
+
+fn validation(
+    nn: &mut NN,
+    running_loss: f32,
+    optim_step: usize,
+    duration: Duration,
+    checkpoint_stride: usize,
+    test_dataset: &Dataset,
+    checkpoint_folder: &str,
+    csv_file: &mut File,
+    //
+    in_channels: usize,
+    h: usize,
+    w: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let checkpoint_num = optim_step / checkpoint_stride;
+    let checkpoint_path =
+        Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
+    nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
+
+    // Get average loss for this epoch
+    let running_avg_loss = running_loss / checkpoint_stride as f32;
+    if DEBUG {
+        println!("[STRIDE DURATION] {:?}", duration);
+        println!("[STRIDE AVG LOSS] {:.4}", running_avg_loss);
+    }
+
+    // Run test loop to calculate accuracy
+    if DEBUG {
+        println!("Running test loop...");
+    }
+    let mut total_correct = 0;
+    let mut total_samples = 0;
+    for (image_path, label) in test_dataset.samples.iter().progress() {
+        // Load the processed image
+        let img_f32 = process_image(&image_path, h as u32, w as u32);
+        let input = Array4::from_shape_vec((1, in_channels, h, w), img_f32)
+            .map_err(|e| format!("Failed to create test input array: {}", e))?;
+
+        let output = nn.forward(input.into_dyn());
+
+        // Find index of max value (argmax) - predicted label
+        let predicted_label = output
+            .into_dimensionality::<Ix2>()
+            .expect("Output shoud be castable to 2D")
+            .row(0)
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(idx, _)| idx)
+            .unwrap() as u8;
+
+        if predicted_label == *label {
+            total_correct += 1;
+        }
+        total_samples += 1;
+    }
+    let accuracy = total_correct as f32 / total_samples as f32;
+    if DEBUG {
+        println!("[TEST ACC] {:.3}", accuracy);
+    }
+
+    // Write to CSV
+    writeln!(
+        csv_file,
+        "{},{},{:?},{}",
+        optim_step, running_avg_loss, duration, accuracy
+    )?;
+    csv_file.flush()?;
+
+    if DEBUG {
+        println!(
+            "Saved checkpoint {} at step {} (loss: {:.4}, accuracy: {:.2}%)",
+            checkpoint_num,
+            optim_step,
+            running_avg_loss,
+            accuracy * 100.0
+        );
+    }
     Ok(())
 }
