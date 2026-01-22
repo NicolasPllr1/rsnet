@@ -25,7 +25,7 @@ enum Commands {
         train_data_dir: String,
         #[arg(long, default_value_t = 10)]
         nb_epochs: usize,
-        #[arg(long, default_value_t = 0.003)]
+        #[arg(long, default_value_t = 0.1)]
         learning_rate: f32,
         #[arg(long, default_value = "checkpoints/")]
         checkpoint_folder: String,
@@ -59,17 +59,24 @@ fn main() {
             // The neural network to train
             let nn = NN {
                 layers: vec![
-                    Layer::Conv(Conv2Dlayer::new(3, 5, (5, 5))), // Input image (1, 224x224) --> (5, 220, 220)
+                    Layer::Conv(Conv2Dlayer::new(3, 16, (3, 3))), // Input image (3, 128x128) --> (16, 126, 126)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((4, 4))), // (5, 220, 220) --> (5, 55, 55)
-                    Layer::Conv(Conv2Dlayer::new(5, 10, (6, 6))), // (5, 55, 55) --> (10, 50, 50)
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (16, 126, 126) --> (16, 63, 63)
+                    //
+                    Layer::Conv(Conv2Dlayer::new(16, 32, (4, 4))), // (16, 63, 63) --> (32, 60, 60)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((5, 5))), // (10, 50, 50) --> (10, 10, 10)
-                    Layer::Conv(Conv2Dlayer::new(10, 5, (3, 3))), // (10, 10, 10) --> (5, 8, 8)
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (32, 60, 60) --> (32, 30, 30)
+                    //
+                    Layer::Conv(Conv2Dlayer::new(32, 64, (3, 3))), // (32, 30, 30) --> (64, 28, 28)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (5, 8, 8) --> (5, 4, 4)
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (64, 28, 28) --> (64, 14, 14)
+                    //
                     Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
-                    Layer::FC(FcLayer::new(5 * 4 * 4, 5)), // Classes: {1, 2, 3, 5}
+                    //
+                    Layer::FC(FcLayer::new(64 * 14 * 14, 128)), // Compress down to 128 features
+                    Layer::ReLU(ReluLayer::new()),
+                    //
+                    Layer::FC(FcLayer::new(128, 5)), // Classes: {1, 2, 3, 5}
                     Layer::Softmax(SoftMaxLayer::new()),
                 ],
             };
