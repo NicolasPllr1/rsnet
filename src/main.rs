@@ -5,6 +5,7 @@ use mnist_rust::layers::{
     Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
 };
 use mnist_rust::model::NN;
+use mnist_rust::optim::cross_entropy;
 
 use clap::{Parser, Subcommand};
 
@@ -85,6 +86,7 @@ fn main() {
                 &train_data_dir,
                 batch_size,
                 nb_epochs,
+                cross_entropy,
                 learning_rate,
                 &checkpoint_folder,
                 checkpoint_stride,

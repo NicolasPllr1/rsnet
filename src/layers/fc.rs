@@ -12,13 +12,13 @@ pub struct FcLayer {
     input_size: usize,
     output_size: usize,
     //
-    weights: Array2<f32>, // (input_size, output_size)
-    bias: Array1<f32>,    //  (output_size)
+    pub weights: Array2<f32>, // (input_size, output_size)
+    pub bias: Array1<f32>,    //  (output_size)
     // for backprop
     last_input: Option<Array2<f32>>, // (batch_size, input_size), this is the prev layer activation
     //
-    w_grad: Option<Array2<f32>>, // (input_size, output_size)
-    b_grad: Option<Array1<f32>>, // (output_size)
+    pub w_grad: Option<Array2<f32>>, // (input_size, output_size)
+    pub b_grad: Option<Array1<f32>>, // (output_size)
 }
 
 impl FcLayer {
@@ -85,14 +85,24 @@ impl Module for FcLayer {
         let new_dz = new_dz.into_dyn(); // dynamic array type
         new_dz
     }
-    fn step(&mut self, lr: f32) {
-        self.weights -= &(self.w_grad.take().unwrap() * lr);
 
-        self.bias -= &(self.b_grad.take().unwrap() * lr);
-        // reset gradients
+    // fn get_weight_grads(&mut self) -> Option<Vec<(ArrayD<f32>, Option<ArrayD<f32>>)>> {
+    //     let w_grad = self
+    //         .w_grad
+    //         .take()
+    //         .expect("Gradient should be filled")
+    //         .into_dyn();
+    //     let b_grad = self
+    //         .b_grad
+    //         .take()
+    //         .expect("Gradient should be filled")
+    //         .into_dyn();
+    //
+    //     Some(vec![(w_grad, Some(b_grad))])
+    // }
+
+    fn zero_grad(&mut self) {
         self.w_grad = None;
         self.b_grad = None;
-        // reset input
-        self.last_input = None;
     }
 }

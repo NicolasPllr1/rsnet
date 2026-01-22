@@ -27,7 +27,8 @@ impl Module for ReluLayer {
             .mapv(|x| if x > 0.0 { 1.0 } else { 0.0 })
             * dz
     }
-    fn step(&mut self, _learning_rate: f32) {
+
+    fn zero_grad(&mut self) {
         self.last_input = None;
     }
 }
@@ -76,7 +77,7 @@ impl Module for SoftMaxLayer {
         self.last_output.clone().unwrap() - labels // TODO: maybe broadcast?
     }
 
-    fn step(&mut self, _learning_rate: f32) {
+    fn zero_grad(&mut self) {
         self.last_output = None;
     }
 }

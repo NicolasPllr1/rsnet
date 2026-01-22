@@ -16,13 +16,13 @@ pub struct Conv2Dlayer {
     kernel_size: (usize, usize), // Size of all the 2d convolving kernels used in this layer.
     stride: usize,               // Stride of the convolution. Will be hardocoded to 1 for now.
     // weights
-    kernels_mat: Array2<f32>, // Layout for img2col: (out_channels, in_channels*k^2)
-    b: Array1<f32>,           // One bias per output channel: (output_channels)
+    pub kernels_mat: Array2<f32>, // Layout for img2col: (out_channels, in_channels*k^2)
+    pub b: Array1<f32>,           // One bias per output channel: (output_channels)
     // for backprop
     last_input: Option<Array3<f32>>, // The 'patches' matrix in img2col: (batch_size, locations, in_channels * k^2)
     //
-    k_grad: Option<Array2<f32>>, // (in_channels, out_channels, kernel_size)
-    b_grad: Option<Array1<f32>>, // (out_channels)
+    pub k_grad: Option<Array2<f32>>, // (in_channels, out_channels, kernel_size)
+    pub b_grad: Option<Array1<f32>>, // (out_channels)
 }
 
 impl Conv2Dlayer {
@@ -315,16 +315,28 @@ impl Module for Conv2Dlayer {
         dinput.into_dyn()
     }
 
-    fn step(&mut self, lr: f32) {
-        self.kernels_mat -= &(self.k_grad.take().unwrap() * lr);
-
-        self.b -= &(self.b_grad.take().unwrap() * lr);
-        // reset gradients
+    fn zero_grad(&mut self) {
         self.k_grad = None;
         self.b_grad = None;
-        // reset input
-        self.last_input = None;
     }
+
+    /*
+    fn get_weight_grads(&mut self) -> Option<Vec<(ArrayD<f32>, Option<ArrayD<f32>>)>> {
+        let k_grad = self
+            .k_grad
+            .take()
+            .expect("Gradient should be filled")
+            .into_dyn();
+
+        let b_grad = self
+            .b_grad
+            .take()
+            .expect("Gradient should be filled")
+            .into_dyn();
+
+        Some(vec![(k_grad, Some(b_grad))])
+    }
+    */
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -429,7 +441,7 @@ impl Module for MaxPoolLayer {
         dinput.to_owned().into_dyn()
     }
 
-    fn step(&mut self, _learning_rate: f32) {
+    fn zero_grad(&mut self) {
         self.last_input_max_mask = None;
     }
 }
@@ -473,7 +485,8 @@ impl Module for FlattenLayer {
 
         new_dz
     }
-    fn step(&mut self, _learning_rate: f32) {
+
+    fn zero_grad(&mut self) {
         self.last_input = None;
     }
 }

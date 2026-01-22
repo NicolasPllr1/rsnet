@@ -28,7 +28,8 @@ pub trait Module {
     /// - the shape of the function output - which corresponds to dLoss/dx - is the same shape
     /// as the layer inputs.
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32>;
-    fn step(&mut self, learning_rate: f32);
+    // fn get_weight_grads(&mut self) -> Option<(ArrayD<f32>, ArrayD<f32>)>;
+    fn zero_grad(&mut self);
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -54,9 +55,27 @@ impl Module for NN {
         }
         x
     }
-    fn step(&mut self, learning_rate: f32) {
+
+    // fn get_weight_grads(&mut self) -> Option<(ArrayD<f32>, ArrayD<f32>)> {
+    // let mut w = Vec::new();
+    // let mut count = 0;
+    // for layer in &mut self.layers {
+    //     if let Some(l_w) = layer.get_weight_grads() {
+    //         w.extend(l_w);
+    //         count += 1;
+    //     }
+    // }
+    //
+    // if count == 0 {
+    //     return None;
+    // }
+    // Some(w)
+    //     todo!()
+    // }
+
+    fn zero_grad(&mut self) {
         for layer in &mut self.layers {
-            layer.step(learning_rate);
+            layer.zero_grad();
         }
     }
 }

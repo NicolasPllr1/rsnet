@@ -44,6 +44,18 @@ impl Module for Layer {
         }
     }
 
+    fn zero_grad(&mut self) {
+        match self {
+            Layer::FC(l) => l.zero_grad(),
+            Layer::Conv(l) => l.zero_grad(),
+            Layer::Pool(l) => l.zero_grad(),
+            Layer::ReLU(l) => l.zero_grad(),
+            Layer::Softmax(l) => l.zero_grad(),
+            Layer::Flatten(l) => l.zero_grad(),
+        }
+    }
+
+    /*
     fn step(&mut self, lr: f32) {
         match self {
             Layer::FC(l) => l.step(lr),
@@ -54,4 +66,16 @@ impl Module for Layer {
             Layer::Flatten(l) => l.step(lr),
         }
     }
+
+    fn get_weight_grads(&mut self) -> Option<Vec<(ArrayD<f32>, Option<ArrayD<f32>>)>> {
+        match self {
+            Layer::FC(l) => l.get_weight_grads(),
+            Layer::Conv(l) => l.get_weight_grads(),
+            Layer::Pool(l) => l.get_weight_grads(),
+            Layer::ReLU(l) => l.get_weight_grads(),
+            Layer::Softmax(l) => l.get_weight_grads(),
+            Layer::Flatten(l) => l.get_weight_grads(),
+        }
+    }
+    */
 }

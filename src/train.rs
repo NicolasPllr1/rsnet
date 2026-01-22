@@ -1,7 +1,8 @@
 // use crate::mnist_dataset::load_mnist;
 use crate::custom_dataset::{load_metadata, process_image, Dataset};
 use crate::model::{Module, NN};
-use crate::optim::{cross_entropy, Optimizer, SGD};
+use crate::optim::SGDMomentum;
+pub(crate) use crate::optim::{CostFunction, Optimizer};
 use crate::DEBUG;
 
 use indicatif::ProgressIterator;
@@ -12,7 +13,6 @@ use rand::thread_rng;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
 use std::time::Duration;
 
 /// Train a neural network
@@ -21,6 +21,7 @@ pub fn train(
     data_dir: &str,
     batch_size: usize,
     nb_epochs: usize,
+    cost_function: CostFunction,
     learning_rate: f32,
     checkpoint_folder: &str,
     checkpoint_stride: usize,
@@ -43,9 +44,10 @@ pub fn train(
     let mut csv_file = fs::File::create(loss_csv_path)?;
     writeln!(csv_file, "epoch,loss,duration,accuracy")?;
 
-    let optimizer = SGD { learning_rate };
+    let viscosity = 0.9;
+    let mut optimizer = SGDMomentum::new(&nn, learning_rate, viscosity);
 
-    // Iterate through epochs
+    // Iterate through epochs;
     for _epoch in (0..nb_epochs).progress() {
         // Shuffle indices for this epoch
         indices.shuffle(&mut thread_rng());
@@ -71,23 +73,23 @@ pub fn train(
                 batch_labels.push(*label);
             }
 
-            // Create batch input Array4 with shape (batch_size, in_channels, h, w)
+            // Input batch: (batch_size, in_channels, h, w)
             let input = Array4::from_shape_vec((batch_size, in_channels, h, w), batch_images)
                 .map_err(|e| format!("Failed to create input array: {}", e))?;
 
-            // Run forward pass (output shape: (batch_size, num_classes))
+            // 0. Zero gradients
+            nn.zero_grad();
+            // 1. Forward pass
             let output = nn.forward(input.into_dyn());
-
-            // Calculate loss and do backpropagation on the batch
-            // The cost function will convert labels to one-hot encoding internally
-            let loss = optimizer.step(
-                &mut nn,
-                cross_entropy,
-                &batch_labels,
-                &output
-                    .into_dimensionality::<Ix2>()
-                    .expect("Output should be castable to 2D"),
-            );
+            let output = output // (batch_size, num_classes)
+                .into_dimensionality::<Ix2>()
+                .expect("Network output should be 2D: (batch_size, num_classes)");
+            // 2. Compute loss
+            let (loss, init_grad) = cost_function(&batch_labels, &output);
+            // 3. Backward pass
+            nn.backward(init_grad.into_dyn());
+            // 4. Optim. step
+            optimizer.step(&mut nn);
 
             if batch_idx % 10 == 0 {
                 let duration = step_start.elapsed();
@@ -139,7 +141,7 @@ fn validation(
     duration: Duration,
     checkpoint_stride: usize,
     test_dataset: &Dataset,
-    checkpoint_folder: &str,
+    _checkpoint_folder: &str,
     csv_file: &mut File,
     //
     in_channels: usize,
@@ -147,9 +149,9 @@ fn validation(
     w: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let checkpoint_num = optim_step / checkpoint_stride;
-    let checkpoint_path =
-        Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
-    nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
+    // let checkpoint_path =
+    //     Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
+    // nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
 
     // Get average loss for this epoch
     let running_avg_loss = running_loss / checkpoint_stride as f32;
