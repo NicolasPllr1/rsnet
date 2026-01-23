@@ -29,13 +29,13 @@ pub fn load_metadata(data_dir: &str, test_data_percentage: Option<f32>) -> (Data
     let mut test_samples = Vec::new();
 
     for (label_str, paths) in metadata.train {
-        let label = label_str.parse::<u8>().unwrap();
+        let label = label_str.parse::<u8>().unwrap() - 1; // NOTE: careful here!
         for p in paths {
             train_samples.push((root.join(p), label));
         }
     }
     for (label_str, paths) in metadata.test {
-        let label = label_str.parse::<u8>().unwrap();
+        let label = label_str.parse::<u8>().unwrap() - 1; // NOTE: careful here!
         for p in paths {
             test_samples.push((root.join(p), label));
         }
