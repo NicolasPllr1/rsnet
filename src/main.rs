@@ -60,17 +60,25 @@ fn main() {
             // The neural network to train
             let nn = NN {
                 layers: vec![
-                    Layer::Conv(Conv2Dlayer::new(3, 16, (3, 3))), // Input image (3, 64,64) --> (16, 62, 62)
+                    Layer::Conv(Conv2Dlayer::new(1, 4, (3, 3))), // Input image (1, 128, 128) --> (4, 126, 126)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (16, 62, 62) --> (16, 31, 31)
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (4, 126, 126) --> (4, 63, 63)
                     //
-                    Layer::Conv(Conv2Dlayer::new(16, 32, (4, 4))), // (16, 31, 31) --> (32, 28, 28)
+                    Layer::Conv(Conv2Dlayer::new(4, 8, (2, 2))), // (4, 63, 63) --> (8, 62, 62)
                     Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (32, 28, 28) --> (32, 14, 14)
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (8, 62, 62) --> (16, 31, 31)
+                    //
+                    Layer::Conv(Conv2Dlayer::new(8, 16, (2, 2))), // (8, 31, 31) --> (16, 30, 30)
+                    Layer::ReLU(ReluLayer::new()),
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (16, 30, 30) --> (16, 15, 15)
+                    //
+                    Layer::Conv(Conv2Dlayer::new(16, 8, (2, 2))), // (16, 15, 15) --> (8, 14, 14)
+                    Layer::ReLU(ReluLayer::new()),
+                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (8, 14, 14) --> (8, 7, 7)
                     //
                     Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
                     //
-                    Layer::FC(FcLayer::new(32 * 14 * 14, 128)), // Compress down to 128 features
+                    Layer::FC(FcLayer::new(8 * 7 * 7, 128)), // Compress down to 128 features
                     Layer::ReLU(ReluLayer::new()),
                     //
                     Layer::FC(FcLayer::new(128, 5)), // Classes: {1, 2, 3, 5}
