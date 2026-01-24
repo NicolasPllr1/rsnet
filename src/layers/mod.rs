@@ -11,7 +11,7 @@ pub mod activations;
 pub mod conv;
 pub mod fc;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Layer {
     FC(FcLayer),
     Conv(Conv2Dlayer),

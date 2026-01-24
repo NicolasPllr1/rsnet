@@ -6,7 +6,7 @@ use ndarray_rand::RandomExt;
 use serde::{Deserialize, Serialize};
 use std::f32;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 ///  z = W.a_prev + b
 pub struct FcLayer {
     input_size: usize,

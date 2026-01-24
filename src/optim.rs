@@ -139,3 +139,158 @@ impl Optimizer for SGDMomentum {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct AdamState {
+    // Each element is a Vec of (m, v) for each parameter in that layer
+    // e.g., for FC: [(m_w, v_w), (m_b, v_b)]
+    pub params: Vec<(ArrayD<f32>, ArrayD<f32>)>,
+}
+
+pub struct Adam {
+    pub t: i32,
+    pub learning_rate: f32,
+    pub beta1: f32,
+    pub beta2: f32,
+    pub epsilon: f32,
+    pub states: Vec<Option<AdamState>>,
+}
+
+impl Adam {
+    pub fn new(nn: &NN, learning_rate: f32) -> Self {
+        let states = vec![None; nn.layers.len()];
+
+        Adam {
+            t: 0,
+            learning_rate,
+            beta1: 0.9,
+            beta2: 0.999,
+            epsilon: 1e-8,
+            states,
+        }
+    }
+}
+
+impl Optimizer for Adam {
+    fn step(&mut self, nn: &mut NN) {
+        self.t += 1;
+        let t_f32 = self.t as f32;
+
+        for (i, layer) in nn.layers.iter_mut().enumerate() {
+            match layer {
+                Layer::FC(l) => {
+                    let w_grad = l.w_grad.as_ref().unwrap().clone().into_dyn();
+                    let b_grad = l.b_grad.as_ref().unwrap().clone().into_dyn();
+
+                    // Initialize state if first time
+                    if self.states[i].is_none() {
+                        self.states[i] = Some(AdamState {
+                            params: vec![
+                                (ArrayD::zeros(w_grad.dim()), ArrayD::zeros(w_grad.dim())),
+                                (ArrayD::zeros(b_grad.dim()), ArrayD::zeros(b_grad.dim())),
+                            ],
+                        });
+                    }
+
+                    let state = self.states[i].as_mut().unwrap();
+
+                    // Update Weights
+                    update_param(
+                        &mut l.weights.view_mut().into_dyn(),
+                        &w_grad,
+                        &mut state.params[0],
+                        self.learning_rate,
+                        self.beta1,
+                        self.beta2,
+                        self.epsilon,
+                        t_f32,
+                    );
+
+                    // Update Bias
+                    update_param(
+                        &mut l.bias.view_mut().into_dyn(),
+                        &b_grad,
+                        &mut state.params[1],
+                        self.learning_rate,
+                        self.beta1,
+                        self.beta2,
+                        self.epsilon,
+                        t_f32,
+                    );
+                }
+                Layer::Conv(l) => {
+                    let k_grad = l.k_grad.as_ref().unwrap().clone().into_dyn();
+                    let b_grad = l.b_grad.as_ref().unwrap().clone().into_dyn();
+
+                    if self.states[i].is_none() {
+                        self.states[i] = Some(AdamState {
+                            params: vec![
+                                (ArrayD::zeros(k_grad.dim()), ArrayD::zeros(k_grad.dim())),
+                                (ArrayD::zeros(b_grad.dim()), ArrayD::zeros(b_grad.dim())),
+                            ],
+                        });
+                    }
+
+                    let state = self.states[i].as_mut().unwrap();
+
+                    update_param(
+                        &mut l.kernels_mat.view_mut().into_dyn(),
+                        &k_grad,
+                        &mut state.params[0],
+                        self.learning_rate,
+                        self.beta1,
+                        self.beta2,
+                        self.epsilon,
+                        t_f32,
+                    );
+
+                    update_param(
+                        &mut l.b.view_mut().into_dyn(),
+                        &b_grad,
+                        &mut state.params[1],
+                        self.learning_rate,
+                        self.beta1,
+                        self.beta2,
+                        self.epsilon,
+                        t_f32,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn update_param(
+    param: &mut ArrayViewMutD<f32>,
+    grad: &ArrayD<f32>,
+    state: &mut (ArrayD<f32>, ArrayD<f32>),
+    lr: f32,
+    beta1: f32,
+    beta2: f32,
+    eps: f32,
+    t: f32,
+) {
+    let (m, v) = state;
+
+    // m = beta1 * m + (1 - beta1) * grad
+    m.zip_mut_with(grad, |m_val, g_val| {
+        *m_val = beta1 * *m_val + (1.0 - beta1) * g_val;
+    });
+
+    // v = beta2 * v + (1 - beta2) * grad^2
+    v.zip_mut_with(grad, |v_val, g_val| {
+        *v_val = beta2 * *v_val + (1.0 - beta2) * g_val.powi(2);
+    });
+
+    // Bias correction
+    let m_corr = 1.0 - beta1.powf(t);
+    let v_corr = 1.0 - beta2.powf(t);
+
+    // Update weight: w = w - lr * (m / m_corr) / (sqrt(v / v_corr) + eps)
+    azip!((p in param, mv in &*m, vv in &*v) {
+        let m_hat = mv / m_corr;
+        let v_hat = vv / v_corr;
+        *p -= lr * m_hat / (v_hat.sqrt() + eps);
+    });
+}

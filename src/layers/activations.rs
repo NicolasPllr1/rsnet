@@ -3,7 +3,7 @@ use ndarray::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::f32;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ReluLayer {
     last_input: Option<ArrayD<f32>>,
 }
@@ -33,7 +33,7 @@ impl Module for ReluLayer {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SoftMaxLayer {
     last_output: Option<Array2<f32>>,
 }

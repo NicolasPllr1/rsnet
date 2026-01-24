@@ -9,7 +9,7 @@ use std::f32;
 
 /// 2D convolution layer (without padding and with stride=1).
 /// pytorch doc: https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Conv2Dlayer {
     in_channels: usize,          // Number of channels in the input image
     out_channels: usize,         // Number of channels produced by the convolution
@@ -341,7 +341,7 @@ impl Module for Conv2Dlayer {
     */
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaxPoolLayer {
     pool_size: (usize, usize),
     // for backprop
@@ -448,7 +448,7 @@ impl Module for MaxPoolLayer {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FlattenLayer {
     last_input: Option<ArrayD<f32>>,
 }
