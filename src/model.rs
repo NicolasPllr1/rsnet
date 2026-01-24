@@ -32,7 +32,7 @@ pub trait Module {
     fn zero_grad(&mut self);
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NN {
     // layers: Vec<Box<dyn Module>>,
     pub layers: Vec<Layer>,
