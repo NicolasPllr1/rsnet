@@ -1,28 +1,20 @@
 import time
+import sys
 from pathlib import Path
+import argparse
 
 import cv2
 
 # Config
 CLASSES = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-DATA_DIR = Path("hand_dataset")
-
-if not DATA_DIR.exists():
-    print(f"Creating {DATA_DIR=}")
-    DATA_DIR.mkdir()
 
 
-def collect_data(label: str, *, nb_samples_to_collect: int, sub_dir: str = ""):
+def collect_data(label: str, *, nb_samples_to_collect: int, dir: Path):
     """
     Collect full-resolution RGB images from the webcam for the `label` class.
     """
 
-    if d := sub_dir.strip():
-        # like: "data/at_home/1" if capturing images for label 1 at home
-        save_path = DATA_DIR / d / label
-    else:
-        save_path = DATA_DIR / label
-
+    save_path = dir / label
     if not save_path.exists():
         print(f"Creating class ({label=}) directory: {save_path}")
         save_path.mkdir(parents=True)
@@ -69,14 +61,25 @@ def collect_data(label: str, *, nb_samples_to_collect: int, sub_dir: str = ""):
 
 
 if __name__ == "__main__":
-    current_digit = input("Enter the digit you are recording (0-9): ").strip()
-    sub_dir = input(f"Sub-dir from {DATA_DIR} to store data (empty if no sub dir): ")
-    nb_samples_to_collect = int(
-        input("How many samples do you want to collect?").strip()
-    )
-    if current_digit in CLASSES:
-        collect_data(
-            current_digit, nb_samples_to_collect=nb_samples_to_collect, sub_dir=sub_dir
-        )
-    else:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--dataset-dir", type=str)
+    parser.add_argument("-l", "--label", type=str)  # [0, 9] (as str)
+    parser.add_argument("-c", "--count", type=int)
+
+    args = parser.parse_args()
+
+    data_dir = Path(str(args.dataset_dir))
+    if not data_dir.exists():
+        print(f"Creating {data_dir=}")
+        data_dir.mkdir()
+
+    nb_samples_to_collect = int(args.count)
+
+    current_digit = str(args.label)
+    if current_digit not in CLASSES:
         print("Invalid digit.")
+        sys.exit(0)
+
+    collect_data(
+        current_digit, nb_samples_to_collect=nb_samples_to_collect, dir=data_dir
+    )
