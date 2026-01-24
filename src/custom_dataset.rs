@@ -66,8 +66,9 @@ pub fn load_metadata(data_dir: &str, test_data_percentage: Option<f32>) -> (Data
 
 pub fn process_image(path: &PathBuf, target_h: u32, target_w: u32) -> Vec<f32> {
     let img = image::open(path).expect("Failed to open image");
-    let resized = img.resize_exact(target_w, target_h, FilterType::Triangle);
-    let rgb = resized.to_rgb32f();
+    let greyscale = img.grayscale();
+    let resized = greyscale.resize_exact(target_w, target_h, FilterType::Triangle);
+    let rgb = resized.to_luma32f();
     let pixels = rgb.into_raw();
     let mean = pixels.iter().sum::<f32>() / pixels.len() as f32;
     pixels.into_iter().map(|p| p - mean).collect()
