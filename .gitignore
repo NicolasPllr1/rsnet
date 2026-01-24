@@ -2,6 +2,7 @@
 
 *.csv
 /checkpoints*
+*chkpt*
 /plots
 
 # Macos
