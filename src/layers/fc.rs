@@ -38,9 +38,10 @@ impl FcLayer {
     fn get_scale(input_size: usize) -> f32 {
         (2.0 / input_size as f32).sqrt()
     }
-    fn init_bias(input_size: usize, output_size: usize) -> Array1<f32> {
-        return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap())
-            * FcLayer::get_scale(input_size);
+    fn init_bias(_input_size: usize, output_size: usize) -> Array1<f32> {
+        // return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap())
+        //     * FcLayer::get_scale(input_size);
+        return Array1::zeros(output_size);
     }
     fn init_2d_mat(input_size: usize, output_size: usize) -> Array2<f32> {
         return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap())
