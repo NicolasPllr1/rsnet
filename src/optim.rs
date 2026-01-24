@@ -99,40 +99,68 @@ impl Optimizer for SGDMomentum {
                 Layer::FC(fc_layer) => {
                     if prev_velocities.is_none() {
                         // First step ever. No velocities yet. Update == vanilla SGD update.
-                        let w_delta = -fc_layer.w_grad.as_ref().unwrap() * self.learning_rate;
+                        let w_delta =
+                            -fc_layer.w_grad.as_ref().expect("[FC] w grad") * self.learning_rate;
                         fc_layer.weights += &(w_delta);
 
-                        let b_delta = -fc_layer.b_grad.as_ref().unwrap() * self.learning_rate;
+                        let b_delta =
+                            -fc_layer.b_grad.as_ref().expect("[FC] bias grad") * self.learning_rate;
+                        fc_layer.bias += &(b_delta);
+
+                        // Record velocities
+                        next_velocity.push(Some((w_delta, b_delta)));
+                    } else {
+                        let (prev_w_delta, prev_b_delta) =
+                            prev_velocities.clone().expect("[FC] prev velocities"); // NOTE: Q: clone necessary??
+
+                        // dynamic --> fixed dimensionality.  NOTE: necessary?
+                        let prev_w_delta = prev_w_delta.into_dimensionality::<Ix2>().unwrap();
+                        let prev_b_delta = prev_b_delta.into_dimensionality::<Ix1>().unwrap();
+
+                        let w_delta = prev_w_delta * self.viscosity
+                            - fc_layer.w_grad.as_ref().unwrap() * self.learning_rate;
+                        fc_layer.weights += &(w_delta);
+
+                        let b_delta = prev_b_delta * self.viscosity
+                            - fc_layer.b_grad.as_ref().unwrap() * self.learning_rate;
                         fc_layer.bias += &(b_delta);
 
                         // Record velocities
                         next_velocity.push(Some((w_delta, b_delta)));
                     }
-
-                    let (prev_w_delta, prev_b_delta) = prev_velocities.clone().unwrap(); // NOTE: Q: clone necessary??
-
-                    // dynamic --> fixed dimensionality.  NOTE: necessary?
-                    let prev_w_delta = prev_w_delta.into_dimensionality::<Ix2>().unwrap();
-                    let prev_b_delta = prev_b_delta.into_dimensionality::<Ix1>().unwrap();
-
-                    let w_delta = prev_w_delta * self.viscosity
-                        - fc_layer.w_grad.as_ref().unwrap() * self.learning_rate;
-                    fc_layer.weights += &(w_delta);
-
-                    let b_delta = prev_b_delta * self.viscosity
-                        - fc_layer.b_grad.as_ref().unwrap() * self.learning_rate;
-                    fc_layer.bias += &(b_delta);
-
-                    // Record velocities
-                    next_velocity.push(Some((w_delta, b_delta)));
-
-                    fc_layer.weights -= &(fc_layer.w_grad.as_ref().unwrap() * self.learning_rate);
-                    fc_layer.bias -= &(fc_layer.b_grad.as_ref().unwrap() * self.learning_rate);
                 }
                 Layer::Conv(conv2_dlayer) => {
-                    conv2_dlayer.kernels_mat -=
-                        &(conv2_dlayer.k_grad.as_ref().unwrap() * self.learning_rate);
-                    conv2_dlayer.b -= &(conv2_dlayer.b_grad.as_ref().unwrap() * self.learning_rate);
+                    if prev_velocities.is_none() {
+                        // First step ever. No velocities yet. Update == vanilla SGD update.
+                        let k_delta = -conv2_dlayer.k_grad.as_ref().expect("[CONV] kernel grad")
+                            * self.learning_rate;
+                        conv2_dlayer.kernels_mat += &(k_delta);
+
+                        let b_delta = -conv2_dlayer.b_grad.as_ref().expect("[CONV] bias grad")
+                            * self.learning_rate;
+                        conv2_dlayer.b += &(b_delta);
+
+                        // Record velocities
+                        next_velocity.push(Some((k_delta, b_delta)));
+                    } else {
+                        let (prev_k_delta, prev_b_delta) =
+                            prev_velocities.clone().expect("[CONV] prev velocities"); // NOTE: Q: clone necessary??
+
+                        // dynamic --> fixed dimensionality.  NOTE: necessary?
+                        let prev_k_delta = prev_k_delta.into_dimensionality::<Ix2>().unwrap();
+                        let prev_b_delta = prev_b_delta.into_dimensionality::<Ix1>().unwrap();
+
+                        let k_delta = prev_k_delta * self.viscosity
+                            - conv2_dlayer.k_grad.as_ref().unwrap() * self.learning_rate;
+                        conv2_dlayer.kernels_mat += &(k_delta);
+
+                        let b_delta = prev_b_delta * self.viscosity
+                            - conv2_dlayer.b_grad.as_ref().unwrap() * self.learning_rate;
+                        conv2_dlayer.b += &(b_delta);
+
+                        // Record velocities
+                        next_velocity.push(Some((k_delta, b_delta)));
+                    }
                 }
                 _ => (), // no weights to update in other layers
             }
