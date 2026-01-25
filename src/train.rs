@@ -139,6 +139,9 @@ pub fn train(
         }
     }
 
+    let ckpt_path = save_model(&nn, checkpoint_folder, optim_step)?;
+    println!("Model saved at {}", ckpt_path);
+
     println!("Training completed!");
     println!("Checkpoint folder: {}", checkpoint_folder);
     Ok(())
@@ -160,11 +163,6 @@ fn validation(
     save_model: bool,
     pb: &ProgressBar,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let checkpoint_num = optim_step / checkpoint_stride;
-    // let checkpoint_path =
-    //     Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
-    // nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
-
     // Get average loss for this epoch
     let running_avg_loss = running_loss / checkpoint_stride as f32;
     if DEBUG {
@@ -231,4 +229,19 @@ fn validation(
         );
     }
     Ok(())
+}
+
+fn save_model(
+    nn: &NN,
+    checkpoint_folder: &str,
+    optim_step: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let ckpt_path = Path::new(checkpoint_folder)
+        .join(format!("checkpoint_{optim_step}.json"))
+        .to_str()
+        .unwrap();
+    println!("Saving model to: {}", ckpt_path.to_str());
+    nn.to_checkpoint(ckpt_path)?;
+
+    Ok(ckpt_path.to_string())
 }
