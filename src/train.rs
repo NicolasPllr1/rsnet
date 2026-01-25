@@ -4,6 +4,8 @@ use crate::model::{Module, NN};
 use crate::optim::SGDMomentum;
 pub(crate) use crate::optim::{CostFunction, Optimizer};
 use crate::DEBUG;
+use rayon::prelude::*;
+use std::path::Path;
 
 use indicatif::ProgressIterator;
 
@@ -141,7 +143,7 @@ fn validation(
     duration: Duration,
     checkpoint_stride: usize,
     test_dataset: &Dataset,
-    _checkpoint_folder: &str,
+    checkpoint_folder: &str,
     csv_file: &mut File,
     //
     in_channels: usize,
@@ -164,49 +166,55 @@ fn validation(
     if DEBUG {
         println!("Running test loop...");
     }
-    let mut total_correct = 0;
-    let mut total_samples = 0;
-    for (image_path, label) in test_dataset.samples.iter().progress() {
-        // Load the processed image
-        let img_f32 = process_image(&image_path, h as u32, w as u32);
-        let input = Array4::from_shape_vec((1, in_channels, h, w), img_f32)
-            .map_err(|e| format!("Failed to create test input array: {}", e))?;
 
-        let output = nn.forward(input.into_dyn());
+    let (total_correct, total_samples) = test_dataset
+        .samples
+        .par_iter()
+        .map_init(
+            || nn.clone(),
+            |local_nn, (image_path, label)| {
+                // Load the processed image
+                let img_f32 = process_image(&image_path, h as u32, w as u32);
+                let input = Array4::from_shape_vec((1, in_channels, h, w), img_f32)
+                    .expect("Failed to create test input array");
+                // .map_err(|e| format!("Failed to create test input array: {}", e))?;
 
-        // Find index of max value (argmax) - predicted label
-        let predicted_label = output
-            .into_dimensionality::<Ix2>()
-            .expect("Output shoud be castable to 2D")
-            .row(0)
-            .iter()
-            .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .map(|(idx, _)| idx)
-            .unwrap() as u8;
+                let output = local_nn.forward(input.into_dyn());
 
-        if predicted_label == *label {
-            total_correct += 1;
-        }
-        total_samples += 1;
-    }
+                // Find index of max value (argmax) - predicted label
+                let predicted_label = output
+                    .into_dimensionality::<Ix2>()
+                    .expect("Output shoud be castable to 2D")
+                    .row(0)
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                    .map(|(idx, _)| idx)
+                    .unwrap() as u8;
+
+                if predicted_label == *label {
+                    (1, 1)
+                } else {
+                    (0, 1)
+                }
+            },
+        )
+        .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+
     let accuracy = total_correct as f32 / total_samples as f32;
-    if DEBUG {
-        println!("[TEST ACC] {:.3}", accuracy);
-    }
+    pb.println(format!("[TEST ACC] {:.3}", accuracy));
 
     // Write to CSV
     writeln!(
         csv_file,
-        "{},{},{:?},{}",
+        "{},{:.4},{:?},{:.4}",
         optim_step, running_avg_loss, duration, accuracy
     )?;
     csv_file.flush()?;
 
     if DEBUG {
         println!(
-            "Saved checkpoint {} at step {} (loss: {:.4}, accuracy: {:.2}%)",
-            checkpoint_num,
+            "[VALIDATION] step {} (loss: {:.4}, accuracy: {:.2}%)",
             optim_step,
             running_avg_loss,
             accuracy * 100.0
