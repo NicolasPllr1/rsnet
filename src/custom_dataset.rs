@@ -16,14 +16,20 @@ pub struct Dataset {
     pub samples: Vec<(PathBuf, u8)>, // path, label
 }
 
-pub fn load_metadata(data_dir: &str, test_data_percentage: Option<f32>) -> (Dataset, Dataset) {
+fn load_metadata(root_data_dir: &Path) -> MetadataSchema {
+    let json_str =
+        fs::read_to_string(root_data_dir.join("metadata.json")).expect("Metadata missing");
+    let metadata: MetadataSchema = serde_json::from_str(&json_str).expect("JSON parse error");
+    metadata
+}
+
+pub fn load_dataset(data_dir: &str, test_data_percentage: Option<f32>) -> (Dataset, Dataset) {
     if let Some(p) = test_data_percentage {
         assert!(0.0 < p && p < 1.0);
     }
 
     let root = Path::new(data_dir);
-    let json_str = fs::read_to_string(root.join("metadata.json")).expect("Metadata missing");
-    let metadata: MetadataSchema = serde_json::from_str(&json_str).expect("JSON parse error");
+    let metadata = load_metadata(root);
 
     let mut train_samples = Vec::new();
     let mut test_samples = Vec::new();

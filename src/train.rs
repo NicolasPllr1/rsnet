@@ -1,5 +1,5 @@
 // use crate::mnist_dataset::load_mnist;
-use crate::custom_dataset::{load_metadata, process_image, Dataset};
+use crate::custom_dataset::{load_dataset, process_image, Dataset};
 use crate::model::{Module, NN};
 use crate::optim::SGDMomentum;
 pub(crate) use crate::optim::{CostFunction, Optimizer};
@@ -33,6 +33,7 @@ pub fn train(
     fs::create_dir_all(checkpoint_folder)?;
 
     let (train_dataset, test_dataset) = load_metadata(&data_dir, None);
+    let (train_dataset, test_dataset) = load_dataset(&data_dir, None);
     println!("[TRAIN] len: {}", train_dataset.samples.len());
     println!("[TEST] len: {}\n", test_dataset.samples.len());
 
