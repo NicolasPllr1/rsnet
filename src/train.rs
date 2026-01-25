@@ -152,13 +152,11 @@ fn validation(
     duration: Duration,
     checkpoint_stride: usize,
     test_dataset: &Dataset,
-    checkpoint_folder: &str,
     csv_file: &mut File,
     //
     in_channels: usize,
     h: usize,
     w: usize,
-    save_model: bool,
     pb: &ProgressBar,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Get average loss for this epoch
