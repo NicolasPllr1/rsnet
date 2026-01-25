@@ -32,11 +32,9 @@ pub fn train(
     // Create checkpoint folder if it doesn't exist
     fs::create_dir_all(checkpoint_folder)?;
 
-    // Load MNIST dataset
-    // let (train_images, train_labels, test_images, test_labels) = load_mnist();
-    let (train_dataset, test_dataset) = load_metadata(&data_dir, Some(0.1));
+    let (train_dataset, test_dataset) = load_metadata(&data_dir, None);
     println!("[TRAIN] len: {}", train_dataset.samples.len());
-    println!("[TEST] len: {}", test_dataset.samples.len());
+    println!("[TEST] len: {}\n", test_dataset.samples.len());
 
     let mut indices: Vec<usize> = (0..train_dataset.samples.len()).collect();
 
@@ -44,7 +42,7 @@ pub fn train(
 
     // Create or truncate CSV file and write header
     let mut csv_file = fs::File::create(loss_csv_path)?;
-    writeln!(csv_file, "epoch,loss,duration,accuracy")?;
+    writeln!(csv_file, "step,loss,duration,accuracy")?;
 
     let viscosity = 0.9;
     let mut optimizer = SGDMomentum::new(&nn, learning_rate, viscosity);
@@ -66,6 +64,7 @@ pub fn train(
 
         // Iterate through shuffled data in batches
         for (_batch_idx, batch_indices) in indices.chunks_exact(batch_size).enumerate() {
+            // for batch_idx in 0..200 {
             let step_start = std::time::Instant::now();
 
             let mut batch_images = Vec::with_capacity(batch_size * 3 * h * w);
@@ -98,14 +97,13 @@ pub fn train(
             // 4. Optim. step
             optimizer.step(&mut nn);
 
-            if batch_idx % 10 == 0 {
-                let duration = step_start.elapsed();
+            if optim_step % checkpoint_stride == 0 {
                 let avg_loss = loss.sum() / batch_size as f32;
-                // This gives you granular speed data per batch
-                if DEBUG {
-                    println!("[BATCH] Step {} took: {:?}", batch_idx, duration);
-                    println!("[BATCH] Step {} loss: {:.4}", batch_idx, avg_loss);
-                }
+                let duration = step_start.elapsed();
+                pb.println(format!(
+                    "[BATCH] step {} loss: {:.4} duration: {:?}",
+                    optim_step, avg_loss, duration
+                ));
             }
 
             // Accumulate loss for epoch average
@@ -143,7 +141,6 @@ pub fn train(
     println!("Model saved at {}", ckpt_path);
 
     println!("Training completed!");
-    println!("Checkpoint folder: {}", checkpoint_folder);
     Ok(())
 }
 
