@@ -7,7 +7,7 @@ use crate::DEBUG;
 use rayon::prelude::*;
 use std::path::Path;
 
-use indicatif::ProgressIterator;
+use indicatif::{ProgressBar, ProgressStyle};
 
 use ndarray::prelude::*;
 use rand::seq::SliceRandom;
@@ -49,18 +49,23 @@ pub fn train(
     let viscosity = 0.9;
     let mut optimizer = SGDMomentum::new(&nn, learning_rate, viscosity);
 
+    let pb = ProgressBar::new(nb_epochs as u64 * (train_dataset.samples.len() / batch_size) as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .unwrap(),
+    );
+    let mut optim_step = 1;
     // Iterate through epochs;
-    for _epoch in (0..nb_epochs).progress() {
-        // Shuffle indices for this epoch
+    for _epoch in 0..nb_epochs {
         indices.shuffle(&mut thread_rng());
 
         // Track loss running loss
         let mut running_loss = 0.0;
-        let mut optim_step = 0;
         let mut stride_duration = std::time::Instant::now();
 
         // Iterate through shuffled data in batches
-        for (batch_idx, batch_indices) in indices.chunks(batch_size).enumerate().progress() {
+        for (_batch_idx, batch_indices) in indices.chunks_exact(batch_size).enumerate() {
             let step_start = std::time::Instant::now();
 
             let mut batch_images = Vec::with_capacity(batch_size * 3 * h * w);
@@ -106,8 +111,6 @@ pub fn train(
             // Accumulate loss for epoch average
             running_loss += loss.mean().unwrap();
 
-            optim_step += 1;
-
             // Save checkpoint every checkpoint_stride optimization steps
             if optim_step % checkpoint_stride == 0 {
                 validation(
@@ -122,12 +125,17 @@ pub fn train(
                     in_channels,
                     h,
                     w,
+                    optim_step % 5 * checkpoint_stride == 0,
+                    &pb,
                 )?;
 
                 // Reset
                 running_loss = 0.0;
                 stride_duration = std::time::Instant::now();
             }
+
+            optim_step += 1;
+            pb.inc(1);
         }
     }
 
@@ -149,6 +157,8 @@ fn validation(
     in_channels: usize,
     h: usize,
     w: usize,
+    save_model: bool,
+    pb: &ProgressBar,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let checkpoint_num = optim_step / checkpoint_stride;
     // let checkpoint_path =
