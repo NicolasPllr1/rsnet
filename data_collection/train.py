@@ -8,6 +8,8 @@ from enum import Enum
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+# from torch.optim.lr_scheduler import StepLR
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
@@ -65,6 +67,20 @@ class Cfg:
     loss_csv: str
 
 
+def eval(model: nn.Sequential, test_loader) -> float:
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    return 100 * correct / total
+
+
 def train(cfg: Cfg, model: nn.Sequential):
     with open(os.path.join(cfg.data_dir, "metadata.json"), "r") as f:
         metadata = json.load(f)
@@ -84,10 +100,11 @@ def train(cfg: Cfg, model: nn.Sequential):
         case OptimizerName.SGD:
             optimizer = optim.SGD(model.parameters(), lr=0.01)
         case OptimizerName.SGD_WITH_MOMENTUM:
-            optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+            optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
         case OptimizerName.ADAM:
             optimizer = optim.Adam(model.parameters(), lr=0.001)
 
+    # scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
     with open(cfg.loss_csv, "w") as f:
         f.write("batch,step,duration,loss\n")
 
@@ -96,8 +113,17 @@ def train(cfg: Cfg, model: nn.Sequential):
         model.train()
         running_loss = 0.0
         time_start = time.time()
+
+        current_lr = optimizer.param_groups[0]["lr"]
+        # print(f"Epoch {epoch + 1}/{cfg.epochs} - LR: {current_lr:.6f}")
+
         with open(cfg.loss_csv, "a") as f:
-            for i, (inputs, labels) in tqdm(enumerate(train_loader), desc="batch"):
+            pbar = tqdm(
+                enumerate(train_loader),
+                total=len(train_loader),
+                desc=f"Epoch {epoch + 1}",
+            )
+            for i, (inputs, labels) in pbar:
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
@@ -105,37 +131,23 @@ def train(cfg: Cfg, model: nn.Sequential):
                 optimizer.step()
 
                 running_loss += loss.item()
-                if i % 10 == 9:  # Print/log every 10 steps
+                if True:
                     time_end = time.time()
                     duration = time_end - time_start
                     batch_nb = i + 1
                     step_nb = (epoch * len(train_loader)) + batch_nb
                     avg_loss = running_loss / 10
-
-                    print(
-                        f"[{epoch + 1}, {batch_nb}, {duration:.2f}s] loss: {avg_loss:.3f}",
-                        flush=True,
-                    )
-                    f.write(
-                        f"{batch_nb // 10},{step_nb},{duration:.2f},{avg_loss:.3f}\n"
-                    )
+                    # pbar.set_postfix(loss=f"{avg_loss:.3f}")
+                    pbar.write(f"loss: {avg_loss:.3f}")
+                    f.write(f"{step_nb},{duration:.2f},{avg_loss:.3f}\n")
                     f.flush()
 
                     running_loss = 0.0
                     time_start = time.time()
 
-    # Simple Test
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for inputs, labels in tqdm(test_loader, desc="eval"):
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    print(f"Accuracy: {100 * correct / total}%")
+        # scheduler.step()
+        epoch_acc = eval(model, test_loader)
+        pbar.write(f"epoch acc: {epoch_acc}%")
 
 
 if __name__ == "__main__":
@@ -149,24 +161,26 @@ if __name__ == "__main__":
 
     target_size = (64, 64)
     cfg = Cfg(
-        data_dir="./hand_dataset/augment",
-        batch_size=32,
+        data_dir="./hand_dataset/",
+        batch_size=64,
         target_size=target_size,
         input_dim=target_size[0] * target_size[1] * 3,
         num_classes=5,
-        epochs=10,
+        epochs=30,
         optimizer_name=optimizer_name,
         loss_csv=loss_csv,
     )
     model = nn.Sequential(
-        nn.Conv2d(3, 16, kernel_size=3, padding=1),
+        nn.Conv2d(3, 8, kernel_size=2, padding=1),
         nn.ReLU(),
         nn.MaxPool2d(2),
-        nn.Conv2d(16, 32, kernel_size=3, padding=1),
+        #
+        nn.Conv2d(8, 16, kernel_size=2, padding=1),
         nn.ReLU(),
         nn.MaxPool2d(2),
+        #
         nn.Flatten(),
-        nn.Linear(32 * (cfg.target_size[0] // 4) * (cfg.target_size[1] // 4), 128),
+        nn.Linear(16 * target_size[0] // 4 * target_size[1] // 4, 128),
         nn.ReLU(),
         nn.Linear(128, cfg.num_classes),
     )
