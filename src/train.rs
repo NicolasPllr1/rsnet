@@ -229,10 +229,8 @@ fn save_model(
     checkpoint_folder: &str,
     optim_step: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let ckpt_path = Path::new(checkpoint_folder)
-        .join(format!("checkpoint_{optim_step}.json"))
-        .to_str()
-        .unwrap();
+    let ckpt_path = Path::new(checkpoint_folder).join(format!("checkpoint_{optim_step}.json"));
+    let ckpt_path = ckpt_path.to_str().unwrap();
     nn.to_checkpoint(ckpt_path)?;
 
     Ok(ckpt_path.to_string())
