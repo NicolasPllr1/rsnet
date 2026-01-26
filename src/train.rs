@@ -32,7 +32,6 @@ pub fn train(
     // Create checkpoint folder if it doesn't exist
     fs::create_dir_all(checkpoint_folder)?;
 
-    let (train_dataset, test_dataset) = load_metadata(&data_dir, None);
     let (train_dataset, test_dataset) = load_dataset(&data_dir, None);
     println!("[TRAIN] len: {}", train_dataset.samples.len());
     println!("[TEST] len: {}\n", test_dataset.samples.len());
