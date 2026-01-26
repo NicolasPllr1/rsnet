@@ -15,6 +15,8 @@ clap = { version = "4.5.54", features = ["derive"] }
 criterion = "0.8.1"
 image = "0.25.9"
 rayon = "1.11.0"
+onnx-protobuf = "0.2.3"
+protobuf = "=3.4.0" # for onnx-protobuf
 
 [[bench]]
 name = "conv_bench"
