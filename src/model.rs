@@ -1,8 +1,15 @@
 use crate::layers::Layer;
 use ndarray::prelude::*;
+use onnx_protobuf::tensor_proto::DataType;
+use onnx_protobuf::tensor_shape_proto::{dimension::Value, Dimension};
+use onnx_protobuf::type_proto;
+use onnx_protobuf::{
+    GraphProto, Message, ModelProto, OperatorSetIdProto, TensorShapeProto, TypeProto,
+    ValueInfoProto,
+};
+use protobuf::MessageField;
 use serde::{Deserialize, Serialize};
 use std::f32;
-
 use std::fs::File;
 use std::io::{Read, Write};
 
@@ -30,6 +37,8 @@ pub trait Module {
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32>;
     // fn get_weight_grads(&mut self) -> Option<(ArrayD<f32>, ArrayD<f32>)>;
     fn zero_grad(&mut self);
+
+    fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,6 +87,71 @@ impl Module for NN {
             layer.zero_grad();
         }
     }
+
+    fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String {
+        graph.name = "model".to_string();
+
+        // Dynamic batch size and fixed spatial dims:
+        let dims = vec![
+            Dimension {
+                value: Some(Value::DimParam("batch".to_string())),
+                ..Default::default()
+            },
+            Dimension {
+                value: Some(Value::DimValue(1)),
+                ..Default::default()
+            }, // channels
+            Dimension {
+                value: Some(Value::DimValue(64)),
+                ..Default::default()
+            }, // height
+            Dimension {
+                value: Some(Value::DimValue(64)),
+                ..Default::default()
+            }, // width
+        ];
+        graph.input = vec![ValueInfoProto {
+            name: "input".to_string(),
+            type_: MessageField::some(TypeProto {
+                value: Some(type_proto::Value::TensorType(type_proto::Tensor {
+                    elem_type: DataType::FLOAT as i32,
+                    shape: MessageField::some(TensorShapeProto {
+                        dim: dims,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+
+        let mut input_name = input_name;
+        let mut layer_idx = layer_idx;
+        for layer in &self.layers {
+            input_name = layer.to_onnx(input_name, layer_idx, graph);
+            layer_idx += 1;
+        }
+
+        let final_output_name = input_name; // This is returned from the last layer
+        graph.output = vec![ValueInfoProto {
+            name: final_output_name.clone(),
+            type_: MessageField::some(TypeProto {
+                value: Some(type_proto::Value::TensorType(type_proto::Tensor {
+                    elem_type: DataType::FLOAT as i32,
+                    shape: MessageField::some(TensorShapeProto {
+                        dim: vec![], // Can leave empty or specify expected output shape
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+
+        final_output_name
+    }
 }
 
 impl NN {
@@ -96,5 +170,23 @@ impl NN {
         file.read_to_string(&mut contents)?;
         let nn: NN = serde_json::from_str(&contents)?;
         Ok(nn)
+    }
+
+    pub fn save_as_onnx_model(&self, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = File::create(file_path)?;
+        let mut graph = GraphProto::default();
+        self.to_onnx("input".to_string(), 0, &mut graph);
+
+        let model = ModelProto {
+            graph: protobuf::MessageField(Some(Box::new(graph))),
+            ir_version: 11,
+            opset_import: vec![OperatorSetIdProto {
+                version: 15,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        file.write_all(&model.write_to_bytes()?)?;
+        Ok(())
     }
 }

@@ -4,6 +4,7 @@ pub use crate::layers::fc::FcLayer;
 pub use crate::model::Module;
 
 use ndarray::prelude::*;
+use onnx_protobuf::GraphProto;
 use serde::{Deserialize, Serialize};
 use std::f32;
 
@@ -52,6 +53,17 @@ impl Module for Layer {
             Layer::ReLU(l) => l.zero_grad(),
             Layer::Softmax(l) => l.zero_grad(),
             Layer::Flatten(l) => l.zero_grad(),
+        }
+    }
+
+    fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String {
+        match self {
+            Layer::FC(fc_layer) => fc_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::Conv(conv2_dlayer) => conv2_dlayer.to_onnx(input_name, layer_idx, graph),
+            Layer::Pool(max_pool_layer) => max_pool_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::ReLU(relu_layer) => relu_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::Softmax(soft_max_layer) => soft_max_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::Flatten(flatten_layer) => flatten_layer.to_onnx(input_name, layer_idx, graph),
         }
     }
 

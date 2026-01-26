@@ -1,6 +1,9 @@
 pub use crate::model::Module;
+
 use ndarray::prelude::*;
+use onnx_protobuf::NodeProto;
 use serde::{Deserialize, Serialize};
+
 use std::f32;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -30,6 +33,26 @@ impl Module for ReluLayer {
 
     fn zero_grad(&mut self) {
         self.last_input = None;
+    }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("relu_{layer_idx}");
+        let output_name = format!("{layer_name}_out");
+
+        let relu_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name],
+            output: vec![output_name.clone()],
+            op_type: "Relu".to_string(),
+            ..Default::default()
+        };
+        graph.node.push(relu_node);
+        output_name
     }
 }
 
@@ -79,5 +102,28 @@ impl Module for SoftMaxLayer {
 
     fn zero_grad(&mut self) {
         self.last_output = None;
+    }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("softmax_{layer_idx}");
+        let output_name = format!("probs"); // NOTE: assume its the last layer and is unique in the
+                                            // network
+
+        // default: softmax over the last axis
+        // https://onnx.ai/onnx/operators/onnx__Softmax.html
+        let softmax_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name],
+            output: vec![output_name.clone()],
+            op_type: "Softmax".to_string(),
+            ..Default::default()
+        };
+        graph.node.push(softmax_node);
+        output_name
     }
 }

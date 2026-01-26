@@ -3,7 +3,9 @@ pub use crate::model::Module;
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
+use onnx_protobuf::{tensor_proto, GraphProto, NodeProto, TensorProto};
 use serde::{Deserialize, Serialize};
+
 use std::f32;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -105,5 +107,41 @@ impl Module for FcLayer {
     fn zero_grad(&mut self) {
         self.w_grad = None;
         self.b_grad = None;
+    }
+
+    fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String {
+        let layer_name = format!("fc_layer_{layer_idx}");
+        let weight_name = format!("{layer_name}_w");
+        let bias_name = format!("{layer_name}_b");
+        let output_name = format!("{layer_name}_out");
+
+        // Weights
+        graph.initializer.push(TensorProto {
+            name: weight_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![self.weights.nrows() as i64, self.weights.ncols() as i64],
+            float_data: self.weights.iter().cloned().collect(),
+            ..Default::default()
+        });
+        // Bias
+        graph.initializer.push(TensorProto {
+            name: bias_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![self.bias.len() as i64],
+            float_data: self.bias.iter().cloned().collect(),
+            ..Default::default()
+        });
+
+        // Gemm op: https://onnx.ai/onnx/operators/onnx__Gemm.html
+        let fc_node = NodeProto {
+            input: vec![input_name, weight_name.clone(), bias_name.clone()],
+            output: vec![output_name.clone()],
+            name: layer_name,
+            op_type: "Gemm".to_string(), // Y = alpha * A’ * B’ + beta * C
+            ..Default::default()
+        };
+        graph.node.push(fc_node);
+
+        output_name
     }
 }

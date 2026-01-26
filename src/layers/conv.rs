@@ -1,10 +1,17 @@
 use crate::model::Module;
 use crate::DEBUG;
+
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
+use onnx_protobuf::attribute_proto;
+use onnx_protobuf::tensor_proto;
+use onnx_protobuf::AttributeProto;
+use onnx_protobuf::NodeProto;
+use onnx_protobuf::TensorProto;
 use serde::{Deserialize, Serialize};
+
 use std::f32;
 
 /// 2D convolution layer (without padding and with stride=1).
@@ -339,6 +346,63 @@ impl Module for Conv2Dlayer {
         Some(vec![(k_grad, Some(b_grad))])
     }
     */
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("conv2d_{layer_idx}");
+        let kernel_weights_name = format!("{layer_name}_kernel_w");
+        let bias_name = format!("{layer_name}_b");
+        let output_name = format!("{layer_name}_out");
+
+        // Kernel weights
+        assert!(self.kernel_size.0 == self.kernel_size.1);
+        let k = self.kernel_size.0;
+        let kernel_weights_4d: Array4<f32> = self
+            .kernels_mat
+            .to_shape((self.out_channels, self.in_channels, k, k))
+            .expect("can reshape kernel weights to 4D tensor")
+            .to_owned();
+
+        let kernel_weights_4d = kernel_weights_4d.permuted_axes([1, 0, 2, 3]).to_owned();
+
+        graph.initializer.push(TensorProto {
+            name: kernel_weights_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![
+                self.out_channels as i64,
+                self.in_channels as i64,
+                k as i64,
+                k as i64,
+            ],
+            float_data: kernel_weights_4d.iter().cloned().collect(),
+            ..Default::default()
+        });
+
+        // Bias
+        graph.initializer.push(TensorProto {
+            name: bias_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![self.out_channels as i64],
+            float_data: self.b.iter().cloned().collect(),
+            ..Default::default()
+        });
+
+        // https://onnx.ai/onnx/operators/onnx__Conv.html
+        let conv_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name, kernel_weights_name, bias_name],
+            output: vec![output_name.clone()],
+            op_type: "Conv".to_string(),
+            ..Default::default() // padding=0, stride=1
+        };
+        graph.node.push(conv_node);
+
+        output_name
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -446,6 +510,40 @@ impl Module for MaxPoolLayer {
     fn zero_grad(&mut self) {
         self.last_input_max_mask = None;
     }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("maxpool_{layer_idx}");
+        let output_name = format!("{layer_name}_out");
+
+        let maxpool_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name], // softmax over the last axis
+            output: vec![output_name.clone()],
+            op_type: "MaxPool".to_string(),
+            attribute: vec![
+                AttributeProto {
+                    name: "kernel_shape".to_string(),
+                    type_: attribute_proto::AttributeType::INTS.into(),
+                    ints: vec![self.pool_size.0 as i64, self.pool_size.1 as i64],
+                    ..Default::default()
+                },
+                AttributeProto {
+                    name: "strides".to_string(),
+                    type_: attribute_proto::AttributeType::INTS.into(),
+                    ints: vec![self.pool_size.0 as i64, self.pool_size.1 as i64],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default() // padding=0, stride=1
+        };
+        graph.node.push(maxpool_node);
+        output_name
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -490,5 +588,25 @@ impl Module for FlattenLayer {
 
     fn zero_grad(&mut self) {
         self.last_input = None;
+    }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("flatten_{layer_idx}");
+        let output_name = format!("{layer_name}_out");
+
+        let maxpool_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name],
+            output: vec![output_name.clone()],
+            op_type: "Flatten".to_string(),
+            ..Default::default() // padding=0, stride=1
+        };
+        graph.node.push(maxpool_node);
+        output_name
     }
 }

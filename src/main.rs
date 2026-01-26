@@ -1,11 +1,10 @@
-use mnist_rust::run;
-use mnist_rust::train;
-
 use mnist_rust::layers::{
     Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
 };
 use mnist_rust::model::NN;
 use mnist_rust::optim::cross_entropy;
+use mnist_rust::run;
+use mnist_rust::train;
 
 use clap::{Parser, Subcommand};
 
@@ -41,6 +40,12 @@ enum Commands {
         checkpoint: String,
         #[arg(long)]
         image_path: String,
+    },
+    Export {
+        #[arg(long)]
+        checkpoint_path: String, // input
+        #[arg(long)]
+        onnx_path: String, // output
     },
 }
 
@@ -102,6 +107,17 @@ fn main() {
         } => {
             if let Err(e) = run::run(&checkpoint, &image_path) {
                 eprintln!("Error running inference: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Export {
+            checkpoint_path,
+            onnx_path,
+        } => {
+            let nn =
+                NN::from_checkpoint(&checkpoint_path).expect("Could not load model checkpoint");
+            if let Err(e) = nn.save_as_onnx_model(&onnx_path) {
+                eprintln!("Error saving model as ONNX: {}", e);
                 std::process::exit(1);
             }
         }
