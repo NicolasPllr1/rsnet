@@ -119,12 +119,10 @@ pub fn train(
                     stride_duration.elapsed(),
                     checkpoint_stride,
                     &test_dataset,
-                    checkpoint_folder,
                     &mut csv_file,
                     in_channels,
                     h,
                     w,
-                    optim_step % 5 * checkpoint_stride == 0,
                     &pb,
                 )?;
 
