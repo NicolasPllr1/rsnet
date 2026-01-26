@@ -233,7 +233,6 @@ fn save_model(
         .join(format!("checkpoint_{optim_step}.json"))
         .to_str()
         .unwrap();
-    println!("Saving model to: {}", ckpt_path.to_str());
     nn.to_checkpoint(ckpt_path)?;
 
     Ok(ckpt_path.to_string())
