@@ -70,6 +70,80 @@ pub fn load_dataset(data_dir: &str, test_data_percentage: Option<f32>) -> (Datas
     )
 }
 
+pub struct KFoldDataset {
+    pub k: usize,
+    pub samples: Vec<(PathBuf, u8)>, // path, label
+}
+
+impl KFoldDataset {
+    pub fn new(data_dir: &str, k: usize) -> KFoldDataset {
+        let root = Path::new(data_dir);
+        let metadata = load_metadata(root);
+
+        let mut samples = Vec::new();
+
+        for (label_str, paths) in metadata.train {
+            let label = label_str.parse::<u8>().unwrap() - 1; // NOTE: careful here!
+            for p in paths {
+                samples.push((root.join(p), label));
+            }
+        }
+        for (label_str, paths) in metadata.test {
+            let label = label_str.parse::<u8>().unwrap() - 1; // NOTE: careful here!
+            for p in paths {
+                samples.push((root.join(p), label));
+            }
+        }
+
+        // Shuffling
+        let mut rng = thread_rng();
+        samples.shuffle(&mut rng);
+
+        KFoldDataset {
+            k,
+            samples: samples,
+        }
+    }
+
+    /// Returns a train / test datasets split, where the test dataset
+    /// is the `test_fold_idx` fold, and all other folds are put in the
+    /// training dataset.
+    pub fn get_fold(&self, test_fold_idx: usize) -> (Dataset, Dataset) {
+        assert!(test_fold_idx < self.k, "Fold index out of bounds");
+
+        let total_len = self.samples.len();
+        let fold_size = total_len / self.k;
+
+        let mut train_samples = Vec::new();
+        let mut test_samples = Vec::new();
+
+        // Calculate the start and end indices for the test fold
+        let start = test_fold_idx * fold_size;
+        let end = if test_fold_idx == self.k - 1 {
+            total_len
+        } else {
+            start + fold_size
+        };
+
+        for (i, sample) in self.samples.iter().enumerate() {
+            if start <= i && i < end {
+                test_samples.push(sample.clone());
+            } else {
+                train_samples.push(sample.clone());
+            }
+        }
+
+        (
+            Dataset {
+                samples: train_samples,
+            },
+            Dataset {
+                samples: test_samples,
+            },
+        )
+    }
+}
+
 pub fn process_image(path: &PathBuf, target_h: u32, target_w: u32) -> Vec<f32> {
     let img = image::open(path).expect("Failed to open image");
     let greyscale = img.grayscale();
