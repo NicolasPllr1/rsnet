@@ -4,11 +4,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
-import onnx
 import onnxruntime as ort
-import torchvision.transforms as transforms
 from PIL import Image
+
+import onnx
 
 
 def load_model(model_path: Path):
@@ -16,44 +15,58 @@ def load_model(model_path: Path):
 
 
 def load_input(image_path: Path, target_size: tuple[int, int]):
-    img = Image.open(image_path).convert("L")
-    img = img.resize(target_size, Image.Resampling.BILINEAR)
-
-    # Convert to tensor (scales to [0, 1] automatically)
-    pixels = transforms.ToTensor()(img)
-
-    # Normalization
-    mean = pixels.mean()
-    pixels = pixels - mean
-
-    return pixels
-
-
-def run_model(
-    session: ort.InferenceSession, image_path: Path, target_size: tuple[int, int]
-) -> npt.NDArray:
-    img = load_input(image_path, target_size)
-    # add batch dim
-    img = np.expand_dims(img, axis=0)
-    print("img shape:", img.shape)
-    probs = session.run(["probs"], {"input": img})
-    return probs
+    with Image.open(image_path) as img:
+        img = img.convert("L").resize(target_size, Image.Resampling.BILINEAR)
+        # Convert to float32 and scale to [0, 1]
+        pixels = np.array(img).astype(np.float32) / 255.0
+    # Normalization (zero-mean)
+    pixels -= pixels.mean()
+    # Add batch and channel dims: (1, 1, H, W)
+    return np.expand_dims(pixels, axis=(0, 1))
 
 
 def get_test_images_path(data_dir: Path) -> list[Path]:
-    """
-    Assumes there is a 'metadata.json' file in the `data_dir` dir.
-    Uses it to only load _test_ images.
-    """
+    metadata_path = data_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Metadata not found at {metadata_path}")
+
     with open(data_dir / "metadata.json", "r") as f:
         metadata = json.load(f)
-    paths = []
-    for _, label_paths in metadata["test"].items():
-        paths.extend([data_dir / p for p in label_paths])
-    return paths
+
+    return [
+        data_dir / p for label_paths in metadata["test"].values() for p in label_paths
+    ]
 
 
-if __name__ == "__main__":
+def inference_loop(
+    session: ort.InferenceSession, image_paths: list[Path], target_size: tuple[int, int]
+) -> tuple[int, float]:
+    correct = 0
+    for img_path in image_paths:
+        try:
+            input_tensor = load_input(img_path, target_size)
+
+            # Run inference
+            outputs = session.run(["probs"], {"input": input_tensor})
+            probs = outputs[0]
+
+            label = int(img_path.parent.name)
+            pred = int(probs[0].argmax() + 1)  # type: ignore
+
+            is_correct = pred == label
+            correct += int(is_correct)
+            print(
+                f"{img_path.relative_to(data_dir)} | {'OK' if is_correct else 'X'} | {label=} | {pred=}:\n{probs=}\n"
+            )
+
+        except Exception as e:
+            print(f"Failed to process {img_path}: {e}")
+
+    accuracy = correct / len(image_paths)
+    return correct, accuracy
+
+
+def main():
     parser = argparse.ArgumentParser(description="ONNX Model Inference Script")
     parser.add_argument(
         "-m", "--model", type=Path, required=True, help="Path to ONNX model"
@@ -78,12 +91,6 @@ if __name__ == "__main__":
     if not args.data.is_dir():
         sys.exit(f"Error: Data directory not found at {args.data}")
 
-    no_metadata_json = args.data / "metadata.json" not in args.data.glob("*.json")
-    if args.test_only and no_metadata_json:
-        sys.exit(
-            f"Error: Flag --test-only set but 'metadata.json' file not found in {args.data}"
-        )
-
     try:
         onnx_model = onnx.load(args.model)
         onnx.checker.check_model(onnx_model)
@@ -91,30 +98,20 @@ if __name__ == "__main__":
     except Exception as e:
         sys.exit(f"Error loading ONNX model: {e}")
 
-    if test_set_only:
-        image_paths = get_test_images_path(data_dir)
-    else:
-        image_paths = list(data_dir.rglob("*.png"))
+    try:
+        if test_set_only:
+            image_paths = get_test_images_path(data_dir)
+        else:
+            image_paths = list(data_dir.rglob("*.png"))
+    except Exception as e:
+        sys.exit(f"Error loading test images: {e}")
 
     if not image_paths:
         sys.exit("No images found to process.")
 
-    correct = 0
-    for img_path in image_paths:
-        try:
-            probs = run_model(session, img_path, TARGET_SIZE)
-
-            label = int(img_path.parent.name)
-            pred = int(probs[0].argmax() + 1)
-
-            is_correct = pred == label
-            correct += int(is_correct)
-            print(
-                f"{img_path.relative_to(data_dir)} | {'OK' if is_correct else 'X'} | {label=} | {pred=}:\n{probs=}\n"
-            )
-
-        except Exception as e:
-            print(f"Failed to process {img_path}: {e}")
-
-    accuracy = correct / len(image_paths)
+    correct, accuracy = inference_loop(session, image_paths, TARGET_SIZE)
     print(f"[ACC] {100 * accuracy:.3f}% ({correct}/{len(image_paths)})")
+
+
+if __name__ == "__main__":
+    main()
