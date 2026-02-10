@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -38,10 +39,18 @@ def get_test_images_path(data_dir: Path) -> list[Path]:
     ]
 
 
+type PredStats = dict[int, int]
+
+
 def inference_loop(
-    session: ort.InferenceSession, image_paths: list[Path], target_size: tuple[int, int]
-) -> tuple[int, float]:
+    session: ort.InferenceSession,
+    image_paths: list[Path],
+    data_dir: Path,
+    target_size: tuple[int, int],
+    log: bool,
+) -> tuple[int, float, PredStats]:
     correct = 0
+    preds: PredStats = defaultdict(int)
     for img_path in image_paths:
         try:
             input_tensor = load_input(img_path, target_size)
@@ -53,17 +62,20 @@ def inference_loop(
             label = int(img_path.parent.name)
             pred = int(probs[0].argmax() + 1)  # type: ignore
 
+            preds[pred] += 1
+
             is_correct = pred == label
             correct += int(is_correct)
-            print(
-                f"{img_path.relative_to(data_dir)} | {'OK' if is_correct else 'X'} | {label=} | {pred=}:\n{probs=}\n"
-            )
+            if log:
+                print(
+                    f"{img_path.relative_to(data_dir)} | {'OK' if is_correct else 'X'} | {label=} | {pred=}:\n{probs=}\n"
+                )
 
         except Exception as e:
             print(f"Failed to process {img_path}: {e}")
 
     accuracy = correct / len(image_paths)
-    return correct, accuracy
+    return correct, accuracy, preds
 
 
 def main():
@@ -75,15 +87,20 @@ def main():
         "-d", "--data", type=Path, required=True, help="Path to data directory"
     )
     parser.add_argument(
-        "-t", "--test-only", action="store_true", help="Only use test set from metadata"
+        "-t",
+        "--test-only",
+        action="store_false",  # default is True
+        help="Only use test set from metadata",
+    )
+    parser.add_argument(
+        "-l",
+        "--log",
+        action="store_true",  # default is False
+        help="Log prediction on each test sample",
     )
     args = parser.parse_args()
 
     TARGET_SIZE = (64, 64)
-
-    model_path = Path(args.onnx_model_path)
-    data_dir = Path(args.data_dir)
-    test_set_only = bool(args.test_set_only)
 
     # Validation
     if not args.model.is_file():
@@ -99,17 +116,20 @@ def main():
         sys.exit(f"Error loading ONNX model: {e}")
 
     try:
-        if test_set_only:
-            image_paths = get_test_images_path(data_dir)
+        if args.test_only:
+            image_paths = get_test_images_path(args.data)
         else:
-            image_paths = list(data_dir.rglob("*.png"))
+            image_paths = list(args.data.rglob("*.png"))
     except Exception as e:
         sys.exit(f"Error loading test images: {e}")
 
     if not image_paths:
         sys.exit("No images found to process.")
 
-    correct, accuracy = inference_loop(session, image_paths, TARGET_SIZE)
+    correct, accuracy, pred_stats = inference_loop(
+        session, image_paths, args.data, TARGET_SIZE, args.log
+    )
+    print(f"[PREDS STATS] {json.dumps(pred_stats, indent=4)}")
     print(f"[ACC] {100 * accuracy:.3f}% ({correct}/{len(image_paths)})")
 
 
