@@ -134,10 +134,10 @@ impl Module for FcLayer {
 
         // Gemm op: https://onnx.ai/onnx/operators/onnx__Gemm.html
         let fc_node = NodeProto {
-            input: vec![input_name, weight_name.clone(), bias_name.clone()],
+            input: vec![input_name, weight_name.clone(), bias_name.clone()], // [A, B, C]
             output: vec![output_name.clone()],
             name: layer_name,
-            op_type: "Gemm".to_string(), // Y = alpha * A’ * B’ + beta * C
+            op_type: "Gemm".to_string(), // default behavior here: Y = A*B + C
             ..Default::default()
         };
         graph.node.push(fc_node);
