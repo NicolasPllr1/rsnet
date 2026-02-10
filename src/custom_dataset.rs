@@ -149,7 +149,7 @@ pub fn process_image(path: &PathBuf, target_h: u32, target_w: u32) -> Vec<f32> {
     let greyscale = img.grayscale();
     let resized = greyscale.resize_exact(target_w, target_h, FilterType::Triangle);
     let rgb = resized.to_luma32f();
-    let pixels = rgb.into_raw();
+    let pixels: Vec<_> = rgb.into_raw().iter().map(|&x| x as f32 / 255.0).collect();
     let mean = pixels.iter().sum::<f32>() / pixels.len() as f32;
     pixels.into_iter().map(|p| p - mean).collect()
 }
