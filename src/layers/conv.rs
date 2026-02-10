@@ -367,7 +367,7 @@ impl Module for Conv2Dlayer {
             .expect("can reshape kernel weights to 4D tensor")
             .to_owned();
 
-        let kernel_weights_4d = kernel_weights_4d.permuted_axes([1, 0, 2, 3]).to_owned();
+        // let kernel_weights_4d = kernel_weights_4d.permuted_axes([1, 0, 2, 3]).to_owned();
 
         graph.initializer.push(TensorProto {
             name: kernel_weights_name.clone(),
