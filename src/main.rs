@@ -19,14 +19,14 @@ struct Cli {
 enum Commands {
     /// Train a new model
     Train {
-        #[arg(long, default_value_t = 128)]
-        batch_size: usize,
-        #[arg(long, short = 'd')]
-        train_data_dir: String,
-        #[arg(long, default_value_t = 10)]
-        nb_epochs: usize,
         #[arg(long, default_value_t = 0.1)]
         learning_rate: f32,
+        #[arg(long, default_value_t = 128)]
+        batch_size: usize,
+        #[arg(long, default_value_t = 10)]
+        nb_epochs: usize,
+        #[arg(long, short = 'd')]
+        train_data_dir: String,
         #[arg(long, default_value = "checkpoints/")]
         checkpoint_folder: String,
         #[arg(long, default_value_t = 1)]
@@ -54,10 +54,10 @@ fn main() {
 
     match cli.command {
         Commands::Train {
-            batch_size,
-            train_data_dir,
-            nb_epochs,
             learning_rate,
+            batch_size,
+            nb_epochs,
+            train_data_dir,
             checkpoint_folder,
             checkpoint_stride,
             loss_csv_path,

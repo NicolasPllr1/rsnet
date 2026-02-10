@@ -42,17 +42,28 @@ Ressource:
 
 ### Training
 
-To train the model on MNIST, specify the number of steps, learning rate, and
-output paths:
+To train the model on MNIST, use the `train`. You can pass a bunch of standard hyper-parameters as well as specify paths for check-pointing:
 
 ```bash
-cargo run --release -- train 1000 0.01 ./checkpoints 100 loss.csv
+cargo run --release -- train \
+  --learning-rate 0.001 \
+  --batch-size 64 \
+  --nb-epochs 30 \
+  --train-data-dir data/ \
+  --checkpoint-folder ckpt/ \
+  --checkpoint-stride 5 \
+  --loss-csv-path loss.csv \
 ```
+
+
+Note: use the `--help` flag to get more info (`cargo run -- train --help`)
 
 ### Inference
 
 To run a single image through a saved checkpoint:
 
 ```bash
-cargo run --release -- run ./checkpoints/checkpoint_10.json ./example_digit.bin
+cargo run --release -- run ckpt/my_latest_ckpt.json image_sample.bin
 ```
+
+Note: use the `--help` flag to get more info (`cargo run -- run --help`)
