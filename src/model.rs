@@ -140,7 +140,16 @@ impl Module for NN {
                 value: Some(type_proto::Value::TensorType(type_proto::Tensor {
                     elem_type: DataType::FLOAT as i32,
                     shape: MessageField::some(TensorShapeProto {
-                        dim: vec![], // Can leave empty or specify expected output shape
+                        dim: vec![
+                            Dimension {
+                                value: Some(Value::DimParam("batch".to_string())),
+                                ..Default::default()
+                            },
+                            Dimension {
+                                value: Some(Value::DimValue(5)),
+                                ..Default::default()
+                            }, // probs over output classes
+                        ],
                         ..Default::default()
                     }),
                     ..Default::default()
