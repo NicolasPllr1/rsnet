@@ -16,25 +16,50 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 
+class OptimizerName(Enum):
+    SGD = "SGD"
+    SGD_WITH_MOMENTUM = "SGD_WITH_MOMENTUM"
+    ADAM = "ADAM"
+
+
+@dataclass
+class Cfg:
+    data_dir: str
+    grey_scale: bool
+    batch_size: int
+    target_size: tuple[int, int]
+    input_dim: int
+    num_classes: int
+    epochs: int
+    optimizer_name: OptimizerName
+    loss_csv: str
+
+
 class CustomImageDataset(Dataset):
-    def __init__(self, data_dir, metadata, split="train", target_size=(64, 64)):
-        self.data_dir = data_dir
-        self.target_size = target_size
+    def __init__(
+        self,
+        cfg: Cfg,
+        metadata,
+        split="train",
+    ):
+        self.data_dir = cfg.data_dir
+        self.target_size = cfg.target_size
+        self.grey_scale = cfg.grey_scale
         self.samples = []
 
         # Load paths and labels from the specific split (train or test)
         for label_str, paths in metadata[split].items():
             label = int(label_str)
             for p in paths:
-                self.samples.append((os.path.join(data_dir, p), label))
+                self.samples.append((os.path.join(cfg.data_dir, p), label))
 
     def __len__(self):
         return len(self.samples)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx):  # type: ignore
         path, label = self.samples[idx]
         # Open and resize (Image.BILINEAR is roughly equivalent to Triangle)
-        img = Image.open(path).convert("RGB")
+        img = Image.open(path).convert("L" if self.grey_scale else "RGB")
         img = img.resize(self.target_size, Image.Resampling.BILINEAR)
 
         # Convert to tensor (scales to [0, 1] automatically)
@@ -47,24 +72,6 @@ class CustomImageDataset(Dataset):
         labels = raw_labels - 1
 
         return pixels, labels
-
-
-class OptimizerName(Enum):
-    SGD = "SGD"
-    SGD_WITH_MOMENTUM = "SGD_WITH_MOMENTUM"
-    ADAM = "ADAM"
-
-
-@dataclass
-class Cfg:
-    data_dir: str
-    batch_size: int
-    target_size: tuple[int, int]
-    input_dim: int
-    num_classes: int
-    epochs: int
-    optimizer_name: OptimizerName
-    loss_csv: str
 
 
 def eval(model: nn.Sequential, test_loader) -> float:
@@ -85,8 +92,8 @@ def train(cfg: Cfg, model: nn.Sequential):
     with open(os.path.join(cfg.data_dir, "metadata.json"), "r") as f:
         metadata = json.load(f)
 
-    train_ds = CustomImageDataset(cfg.data_dir, metadata, "train", cfg.target_size)
-    test_ds = CustomImageDataset(cfg.data_dir, metadata, "test", cfg.target_size)
+    train_ds = CustomImageDataset(cfg, metadata, "train")
+    test_ds = CustomImageDataset(cfg, metadata, "test")
 
     print(f"[TRAIN] {len(train_ds)=}")
     print(f"[TEST] {len(test_ds)=}")
@@ -152,6 +159,10 @@ def train(cfg: Cfg, model: nn.Sequential):
 
 if __name__ == "__main__":
     parser = ArgumentParser("Train a CNN")
+    parser.add_argument("-d", "--data", type=str)
+    parser.add_argument("-g", "--grey", type=bool)
+    parser.add_argument("-b", "--batch_size", type=int, default=64)
+    parser.add_argument("-e", "--epochs", type=int, default=30)
     parser.add_argument("-l", "--loss_csv", type=str)
     parser.add_argument("-n", "--optimizer_name", type=str)
     args = parser.parse_args()
@@ -159,28 +170,32 @@ if __name__ == "__main__":
     loss_csv = str(args.loss_csv).strip()
     optimizer_name = OptimizerName(str(args.optimizer_name).strip().upper())
 
-    target_size = (64, 64)
+    TARGET_SIZE = (64, 64)
     cfg = Cfg(
-        data_dir="./hand_dataset/",
-        batch_size=64,
-        target_size=target_size,
-        input_dim=target_size[0] * target_size[1] * 3,
+        data_dir=args.data,
+        grey_scale=args.grey,
+        batch_size=args.batch_size,
+        target_size=TARGET_SIZE,
+        input_dim=TARGET_SIZE[0] * TARGET_SIZE[1] * 3,
         num_classes=5,
-        epochs=30,
+        epochs=args.epochs,
         optimizer_name=optimizer_name,
         loss_csv=loss_csv,
     )
+
+    print("Grey?", args.grey)
+    in_channels = 1 if cfg.grey_scale else 3
     model = nn.Sequential(
-        nn.Conv2d(3, 8, kernel_size=2, padding=1),
+        nn.Conv2d(in_channels, 8, kernel_size=3),  # 64x64 --> 62x62
         nn.ReLU(),
-        nn.MaxPool2d(2),
+        nn.MaxPool2d(2),  # --> 31x31
         #
-        nn.Conv2d(8, 16, kernel_size=2, padding=1),
+        nn.Conv2d(8, 16, kernel_size=2),  # --> 30x30
         nn.ReLU(),
-        nn.MaxPool2d(2),
+        nn.MaxPool2d(2),  # --> 15x15
         #
         nn.Flatten(),
-        nn.Linear(16 * target_size[0] // 4 * target_size[1] // 4, 128),
+        nn.Linear(16 * 15 * 15, 128),  # 3600 --> 128
         nn.ReLU(),
         nn.Linear(128, cfg.num_classes),
     )
