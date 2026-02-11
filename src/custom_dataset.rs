@@ -144,7 +144,7 @@ impl KFoldDataset {
     }
 }
 
-pub fn process_image(path: &PathBuf, target_h: u32, target_w: u32) -> Vec<f32> {
+pub fn load_and_preprocess_image(path: &PathBuf, target_h: u32, target_w: u32) -> Vec<f32> {
     let img = image::open(path).expect("Failed to open image");
     let greyscale = img.grayscale();
     let resized = greyscale.resize_exact(target_w, target_h, FilterType::Triangle);
