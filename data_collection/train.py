@@ -105,7 +105,7 @@ def train(cfg: Cfg, model: nn.Sequential):
 
     match cfg.optimizer_name:
         case OptimizerName.SGD:
-            optimizer = optim.SGD(model.parameters(), lr=0.01)
+            optimizer = optim.SGD(model.parameters(), lr=0.001)
         case OptimizerName.SGD_WITH_MOMENTUM:
             optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
         case OptimizerName.ADAM:
