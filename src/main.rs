@@ -65,21 +65,17 @@ fn main() {
             // The neural network to train
             let nn = NN {
                 layers: vec![
-                    Layer::Conv(Conv2Dlayer::new(1, 4, (3, 3))), // Input image (1, 64, 64) --> (4, 62, 62)
+                    Layer::Conv(Conv2Dlayer::new(1, 8, (3, 3))), // Input image (1, 64, 64) --> (4, 62, 62)
                     Layer::ReLU(ReluLayer::new()),
                     Layer::Pool(MaxPoolLayer::new((2, 2))), // (4, 62, 62) --> (4, 31, 31)
                     //
-                    Layer::Conv(Conv2Dlayer::new(4, 8, (2, 2))), // (4, 31, 31) --> (8, 30, 30)
+                    Layer::Conv(Conv2Dlayer::new(8, 16, (2, 2))), // (4, 31, 31) --> (8, 30, 30)
                     Layer::ReLU(ReluLayer::new()),
                     Layer::Pool(MaxPoolLayer::new((2, 2))), // (8, 30, 30) --> (8, 15, 15)
                     //
-                    Layer::Conv(Conv2Dlayer::new(8, 16, (2, 2))), // (8, 15, 15) --> (16, 14, 14)
-                    Layer::ReLU(ReluLayer::new()),
-                    Layer::Pool(MaxPoolLayer::new((2, 2))), // (16, 14, 14) --> (16, 7, 7)
-                    //
                     Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
                     //
-                    Layer::FC(FcLayer::new(16 * 7 * 7, 128)), // Compress down to 128 features
+                    Layer::FC(FcLayer::new(16 * 15 * 15, 128)), // Compress down to 128 features
                     Layer::ReLU(ReluLayer::new()),
                     //
                     Layer::FC(FcLayer::new(128, 5)), // Classes: {1, 2, 3, 5}
