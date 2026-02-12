@@ -55,7 +55,7 @@ pub fn train(
         indices.shuffle(&mut thread_rng());
 
         for (_batch_idx, batch_indices) in indices.chunks_exact(batch_size).enumerate() {
-            let mut batch_images = Vec::with_capacity(batch_size * 3 * h * w);
+            let mut batch_images = Vec::with_capacity(batch_size * in_channels * h * w);
             let mut batch_labels = Vec::new();
 
             for &idx in batch_indices {
