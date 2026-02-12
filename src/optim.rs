@@ -93,7 +93,7 @@ impl SGDMomentum {
 
 impl Optimizer for SGDMomentum {
     fn step(&mut self, nn: &mut NN) {
-        let mut next_velocity = Vec::new();
+        let mut next_velocity: Vec<Option<(ArrayD<f32>, ArrayD<f32>)>> = Vec::new();
         for (layer, prev_velocities) in nn.layers.iter_mut().zip(self.velocity.iter_mut()) {
             match layer {
                 Layer::FC(fc_layer) => {
@@ -108,7 +108,7 @@ impl Optimizer for SGDMomentum {
                         fc_layer.bias += &(b_delta);
 
                         // Record velocities
-                        next_velocity.push(Some((w_delta, b_delta)));
+                        next_velocity.push(Some((w_delta.into_dyn(), b_delta.into_dyn())));
                     } else {
                         let (prev_w_delta, prev_b_delta) =
                             prev_velocities.clone().expect("[FC] prev velocities"); // NOTE: Q: clone necessary??
@@ -126,7 +126,7 @@ impl Optimizer for SGDMomentum {
                         fc_layer.bias += &(b_delta);
 
                         // Record velocities
-                        next_velocity.push(Some((w_delta, b_delta)));
+                        next_velocity.push(Some((w_delta.into_dyn(), b_delta.into_dyn())));
                     }
                 }
                 Layer::Conv(conv2_dlayer) => {
@@ -141,7 +141,7 @@ impl Optimizer for SGDMomentum {
                         conv2_dlayer.b += &(b_delta);
 
                         // Record velocities
-                        next_velocity.push(Some((k_delta, b_delta)));
+                        next_velocity.push(Some((k_delta.into_dyn(), b_delta.into_dyn())));
                     } else {
                         let (prev_k_delta, prev_b_delta) =
                             prev_velocities.clone().expect("[CONV] prev velocities"); // NOTE: Q: clone necessary??
@@ -159,12 +159,14 @@ impl Optimizer for SGDMomentum {
                         conv2_dlayer.b += &(b_delta);
 
                         // Record velocities
-                        next_velocity.push(Some((k_delta, b_delta)));
+                        next_velocity.push(Some((k_delta.into_dyn(), b_delta.into_dyn())));
                     }
                 }
                 _ => (), // no weights to update in other layers
             }
         }
+
+        self.velocity = next_velocity;
     }
 }
 
