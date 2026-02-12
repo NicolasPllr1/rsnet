@@ -19,7 +19,7 @@ struct Cli {
 enum Commands {
     /// Train a new model
     Train {
-        #[arg(long, default_value_t = 0.1)]
+        #[arg(long, default_value_t = 0.001)]
         learning_rate: f32,
         #[arg(long, default_value_t = 128)]
         batch_size: usize,
