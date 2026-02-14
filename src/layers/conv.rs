@@ -53,8 +53,9 @@ impl Conv2Dlayer {
             b_grad: None,
         }
     }
+
+    /// Scale factor to implement Kaming He initialization.
     fn get_scale(in_channels: usize, kernel_size: (usize, usize)) -> f32 {
-        // (2.0 / (in_channels * kernel_size.0 * kernel_size.1) as f32).sqrt()
         (6.0 / (in_channels * kernel_size.0 * kernel_size.1) as f32).sqrt() // 2 -> 6, uniform vs normal
     }
 
@@ -63,8 +64,6 @@ impl Conv2Dlayer {
         out_channels: usize,
         _kernel_size: (usize, usize),
     ) -> Array1<f32> {
-        // return Array1::random(out_channels, Uniform::new(-1.0, 1.0).unwrap())
-        //     * Conv2Dlayer::get_scale(in_channels, kernel_size);
         Array1::zeros(out_channels)
     }
     fn init_kernel(
