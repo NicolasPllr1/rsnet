@@ -66,28 +66,4 @@ impl Module for Layer {
             Layer::Flatten(flatten_layer) => flatten_layer.to_onnx(input_name, layer_idx, graph),
         }
     }
-
-    /*
-    fn step(&mut self, lr: f32) {
-        match self {
-            Layer::FC(l) => l.step(lr),
-            Layer::Conv(l) => l.step(lr),
-            Layer::Pool(l) => l.step(lr),
-            Layer::ReLU(l) => l.step(lr),
-            Layer::Softmax(l) => l.step(lr),
-            Layer::Flatten(l) => l.step(lr),
-        }
-    }
-
-    fn get_weight_grads(&mut self) -> Option<Vec<(ArrayD<f32>, Option<ArrayD<f32>>)>> {
-        match self {
-            Layer::FC(l) => l.get_weight_grads(),
-            Layer::Conv(l) => l.get_weight_grads(),
-            Layer::Pool(l) => l.get_weight_grads(),
-            Layer::ReLU(l) => l.get_weight_grads(),
-            Layer::Softmax(l) => l.get_weight_grads(),
-            Layer::Flatten(l) => l.get_weight_grads(),
-        }
-    }
-    */
 }

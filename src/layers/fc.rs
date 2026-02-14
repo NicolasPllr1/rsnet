@@ -89,21 +89,6 @@ impl Module for FcLayer {
         new_dz
     }
 
-    // fn get_weight_grads(&mut self) -> Option<Vec<(ArrayD<f32>, Option<ArrayD<f32>>)>> {
-    //     let w_grad = self
-    //         .w_grad
-    //         .take()
-    //         .expect("Gradient should be filled")
-    //         .into_dyn();
-    //     let b_grad = self
-    //         .b_grad
-    //         .take()
-    //         .expect("Gradient should be filled")
-    //         .into_dyn();
-    //
-    //     Some(vec![(w_grad, Some(b_grad))])
-    // }
-
     fn zero_grad(&mut self) {
         self.w_grad = None;
         self.b_grad = None;

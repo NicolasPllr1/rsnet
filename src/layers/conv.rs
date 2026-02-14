@@ -329,24 +329,6 @@ impl Module for Conv2Dlayer {
         self.b_grad = None;
     }
 
-    /*
-    fn get_weight_grads(&mut self) -> Option<Vec<(ArrayD<f32>, Option<ArrayD<f32>>)>> {
-        let k_grad = self
-            .k_grad
-            .take()
-            .expect("Gradient should be filled")
-            .into_dyn();
-
-        let b_grad = self
-            .b_grad
-            .take()
-            .expect("Gradient should be filled")
-            .into_dyn();
-
-        Some(vec![(k_grad, Some(b_grad))])
-    }
-    */
-
     fn to_onnx(
         &self,
         input_name: String,
