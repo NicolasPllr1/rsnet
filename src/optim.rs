@@ -80,7 +80,7 @@ impl SGDMomentum {
                 Layer::Conv(_) => {
                     velocity.push(None);
                 }
-                _ => (), // no weights to update in other layers
+                _ => velocity.push(None), // no weights to update in other layers
             }
         }
         SGDMomentum {
@@ -92,79 +92,119 @@ impl SGDMomentum {
 }
 
 impl Optimizer for SGDMomentum {
+    ///  SDG with momentum does two updates:
+    ///
+    ///  Pytorch does:
+    ///  1) v_{t+1} = viscosity*v_t + g_t
+    ///  2) w_{t+1} = w_t - lr*v_{t+1}
+    ///
+    ///  In the original paper (~Sutskever), the updates are:
+    ///  1) v_{t+1} = viscosity*v_t - lr*g_t
+    ///  2) w_{t+1} = w_t + v_{t+1}
+    ///
+    /// Implementing the Sutskever version here.
     fn step(&mut self, nn: &mut NN) {
         let mut next_velocity: Vec<Option<(ArrayD<f32>, ArrayD<f32>)>> = Vec::new();
+
+        let mut total_grad_norm_sq = 0.0;
+        let mut zero_grad_count = 0;
+        let mut total_param_count = 0;
+
         for (layer, prev_velocities) in nn.layers.iter_mut().zip(self.velocity.iter_mut()) {
             match layer {
                 Layer::FC(fc_layer) => {
+                    let w_grad = fc_layer.w_grad.as_ref().expect("[FC] w grad");
+                    let b_grad = fc_layer.b_grad.as_ref().expect("[FC] bias grad");
+
+                    // Metrics Collection
+                    total_grad_norm_sq += w_grad.iter().map(|x| x * x).sum::<f32>();
+                    total_grad_norm_sq += b_grad.iter().map(|x| x * x).sum::<f32>();
+                    zero_grad_count += w_grad.iter().filter(|&&x| x == 0.0).count();
+                    total_param_count += w_grad.len() + b_grad.len();
+
+                    let max_w = fc_layer.weights.iter().map(|x| x.abs()).fold(0.0, f32::max);
+                    println!("[OPTIM] Max FC Weight: {}", max_w);
+
+                    let lr = self.learning_rate;
+                    let mu = self.viscosity;
+
                     if prev_velocities.is_none() {
                         // First step ever. No velocities yet. Update == vanilla SGD update.
-                        let w_delta =
-                            -fc_layer.w_grad.as_ref().expect("[FC] w grad") * self.learning_rate;
-                        fc_layer.weights += &(w_delta);
+                        let w_velocity = -lr * w_grad;
+                        fc_layer.weights += &(w_velocity);
 
-                        let b_delta =
-                            -fc_layer.b_grad.as_ref().expect("[FC] bias grad") * self.learning_rate;
-                        fc_layer.bias += &(b_delta);
+                        let b_velocity = -lr * b_grad;
+                        fc_layer.bias += &(b_velocity);
 
                         // Record velocities
-                        next_velocity.push(Some((w_delta.into_dyn(), b_delta.into_dyn())));
+                        next_velocity.push(Some((w_velocity.into_dyn(), b_velocity.into_dyn())));
                     } else {
-                        let (prev_w_delta, prev_b_delta) =
+                        let (prev_w_velocity, prev_b_velocity) =
                             prev_velocities.clone().expect("[FC] prev velocities"); // NOTE: Q: clone necessary??
 
                         // dynamic --> fixed dimensionality.  NOTE: necessary?
-                        let prev_w_delta = prev_w_delta.into_dimensionality::<Ix2>().unwrap();
-                        let prev_b_delta = prev_b_delta.into_dimensionality::<Ix1>().unwrap();
+                        let prev_w_velocity = prev_w_velocity.into_dimensionality::<Ix2>().unwrap();
+                        let prev_b_velocity = prev_b_velocity.into_dimensionality::<Ix1>().unwrap();
 
-                        let w_delta = prev_w_delta * self.viscosity
-                            - fc_layer.w_grad.as_ref().unwrap() * self.learning_rate;
-                        fc_layer.weights += &(w_delta);
+                        let w_velocity = mu * prev_w_velocity - lr * w_grad;
+                        fc_layer.weights += &(w_velocity);
 
-                        let b_delta = prev_b_delta * self.viscosity
-                            - fc_layer.b_grad.as_ref().unwrap() * self.learning_rate;
-                        fc_layer.bias += &(b_delta);
+                        let b_velocity = mu * prev_b_velocity - lr * b_grad;
+                        fc_layer.bias += &(b_velocity);
 
                         // Record velocities
-                        next_velocity.push(Some((w_delta.into_dyn(), b_delta.into_dyn())));
+                        next_velocity.push(Some((w_velocity.into_dyn(), b_velocity.into_dyn())));
                     }
                 }
                 Layer::Conv(conv2_dlayer) => {
+                    let k_grad = conv2_dlayer.k_grad.as_ref().expect("[CONV] kernel grad");
+                    let b_grad = conv2_dlayer.b_grad.as_ref().expect("[CONV] bias grad");
+
+                    total_grad_norm_sq += k_grad.iter().map(|x| x * x).sum::<f32>();
+                    total_grad_norm_sq += b_grad.iter().map(|x| x * x).sum::<f32>();
+                    zero_grad_count += k_grad.iter().filter(|&&x| x == 0.0).count();
+                    total_param_count += k_grad.len() + b_grad.len();
+
+                    let lr = self.learning_rate;
+                    let mu = self.viscosity;
+
                     if prev_velocities.is_none() {
                         // First step ever. No velocities yet. Update == vanilla SGD update.
-                        let k_delta = -conv2_dlayer.k_grad.as_ref().expect("[CONV] kernel grad")
-                            * self.learning_rate;
-                        conv2_dlayer.kernels_mat += &(k_delta);
+                        let k_velocity = -lr * k_grad;
+                        conv2_dlayer.kernels_mat += &(k_velocity);
 
-                        let b_delta = -conv2_dlayer.b_grad.as_ref().expect("[CONV] bias grad")
-                            * self.learning_rate;
-                        conv2_dlayer.b += &(b_delta);
+                        let b_velocity = -lr * b_grad;
+                        conv2_dlayer.b += &(b_velocity);
 
-                        // Record velocities
-                        next_velocity.push(Some((k_delta.into_dyn(), b_delta.into_dyn())));
+                        next_velocity.push(Some((k_velocity.into_dyn(), b_velocity.into_dyn())));
                     } else {
-                        let (prev_k_delta, prev_b_delta) =
+                        let (prev_k_velocity, prev_b_velocity) =
                             prev_velocities.clone().expect("[CONV] prev velocities"); // NOTE: Q: clone necessary??
 
                         // dynamic --> fixed dimensionality.  NOTE: necessary?
-                        let prev_k_delta = prev_k_delta.into_dimensionality::<Ix2>().unwrap();
-                        let prev_b_delta = prev_b_delta.into_dimensionality::<Ix1>().unwrap();
+                        let prev_k_velocity = prev_k_velocity.into_dimensionality::<Ix2>().unwrap();
+                        let prev_b_velocity = prev_b_velocity.into_dimensionality::<Ix1>().unwrap();
 
-                        let k_delta = prev_k_delta * self.viscosity
-                            - conv2_dlayer.k_grad.as_ref().unwrap() * self.learning_rate;
-                        conv2_dlayer.kernels_mat += &(k_delta);
+                        let k_velocity = mu * prev_k_velocity - lr * k_grad;
+                        conv2_dlayer.kernels_mat += &(k_velocity);
 
-                        let b_delta = prev_b_delta * self.viscosity
-                            - conv2_dlayer.b_grad.as_ref().unwrap() * self.learning_rate;
-                        conv2_dlayer.b += &(b_delta);
+                        let b_velocity = mu * prev_b_velocity - lr * b_grad;
+                        conv2_dlayer.b += &(b_velocity);
 
-                        // Record velocities
-                        next_velocity.push(Some((k_delta.into_dyn(), b_delta.into_dyn())));
+                        next_velocity.push(Some((k_velocity.into_dyn(), b_velocity.into_dyn())));
                     }
                 }
                 _ => (), // no weights to update in other layers
             }
         }
+        let g_norm = total_grad_norm_sq.sqrt();
+        let dead_ratio = zero_grad_count as f32 / total_param_count as f32;
+
+        println!(
+            "[OPTIMIZER] G_Norm: {:.6}, Dead_Params: {:.2}%",
+            g_norm,
+            dead_ratio * 100.0
+        );
 
         self.velocity = next_velocity;
     }
