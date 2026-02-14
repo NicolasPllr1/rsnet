@@ -96,8 +96,11 @@ impl Module for SoftMaxLayer {
         // NOTE: input to the softmax backward is the labels
         // labels: (batch_size, K), and there are K=9 classes for MNIST
 
+        let batch_size = labels.shape()[0];
+
         // NOTE: ASSUMING cross-entropy loss, which simplifies nicely with softmax during backprop
-        self.last_output.clone().unwrap() - labels // TODO: maybe broadcast?
+        let unormalized_dz = self.last_output.clone().unwrap() - labels; // TODO: maybe broadcast?
+        unormalized_dz / batch_size as f32
     }
 
     fn zero_grad(&mut self) {
