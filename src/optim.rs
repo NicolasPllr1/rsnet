@@ -194,7 +194,7 @@ impl Optimizer for SGDMomentum {
                         next_velocity.push(Some((k_velocity.into_dyn(), b_velocity.into_dyn())));
                     }
                 }
-                _ => (), // no weights to update in other layers
+                _ => next_velocity.push(None), // no weights to update in other layers
             }
         }
         let g_norm = total_grad_norm_sq.sqrt();
