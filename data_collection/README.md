@@ -61,3 +61,11 @@ My Rust implementation was using SGB and didn't seem to train on my dataset. It
 turns out the pytorch version is having issues too. This is symptom of SGD used
 in a deeper CNN and more comple dataset compared to what's typically sufficient
 to solve MNIST.
+
+## Tests
+
+Use `cargo test` to run tests. Use the `--release` mode for faster execution and the `--nocapture` flag to see prints.
+
+```bash
+cargo test --release -- --nocapture
+```
