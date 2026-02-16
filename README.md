@@ -67,3 +67,21 @@ cargo run --release -- run ckpt/my_latest_ckpt.json image_sample.bin
 ```
 
 Note: use the `--help` flag to get more info (`cargo run -- run --help`)
+
+### ONNX
+
+Models defined with this Rust engine can be exported to the ONNX format. Use the
+`export` command:
+
+```bash
+cargo run -- export \
+  --checkpoint-path <path-to-checkpoint> \
+  --onnx-path <output-onnx-file-path>
+```
+
+Resources:
+
+- MMAP blog post: [ONNX introduction](https://mmapped.blog/posts/37-onnx-intro)
+- [Doc](https://onnx.ai/onnx/index.html):
+  - [Concepts](https://onnx.ai/onnx/intro/index.html)
+  - [Operators](https://onnx.ai/onnx/operators/index.html)
