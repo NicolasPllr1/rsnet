@@ -1,7 +1,7 @@
 use mnist_rust::layers::{
     Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
 };
-use mnist_rust::model::NN;
+use mnist_rust::model::{ImageShape, NN};
 use mnist_rust::optim::cross_entropy;
 use mnist_rust::optim::OptiName;
 use mnist_rust::run;
@@ -51,6 +51,12 @@ enum Commands {
         checkpoint_path: String, // input
         #[arg(long)]
         onnx_path: String, // output
+        #[arg(long, default_value_t = 1)]
+        input_channels: i64,
+        #[arg(long, default_value_t = 64)]
+        input_height: i64,
+        #[arg(long, default_value_t = 64)]
+        input_width: i64,
     },
 }
 
@@ -122,10 +128,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Export {
             checkpoint_path,
             onnx_path,
+            input_channels,
+            input_height,
+            input_width,
         } => {
             let nn =
                 NN::from_checkpoint(&checkpoint_path).expect("Could not load model checkpoint");
-            if let Err(e) = nn.save_as_onnx_model(&onnx_path) {
+
+            let input_shape = ImageShape::new(input_channels, input_height, input_width);
+            if let Err(e) = nn.save_as_onnx_model(&onnx_path, input_shape) {
                 eprintln!("Error saving model as ONNX: {}", e);
                 std::process::exit(1);
             }

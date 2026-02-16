@@ -13,6 +13,23 @@ use std::f32;
 use std::fs::File;
 use std::io::{Read, Write};
 
+#[derive(Debug)]
+pub struct ImageShape {
+    pub channels: i64,
+    pub height: i64,
+    pub width: i64,
+}
+
+impl ImageShape {
+    pub fn new(channels: i64, height: i64, width: i64) -> ImageShape {
+        ImageShape {
+            channels,
+            height,
+            width,
+        }
+    }
+}
+
 pub trait Module {
     fn forward(&mut self, input: ArrayD<f32>) -> ArrayD<f32>; // Input is (batch_size, features)
     /// Backward pass
@@ -75,41 +92,6 @@ impl Module for NN {
     fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String {
         graph.name = "model".to_string();
 
-        // Dynamic batch size and fixed spatial dims:
-        let dims = vec![
-            Dimension {
-                value: Some(Value::DimParam("batch".to_string())),
-                ..Default::default()
-            },
-            Dimension {
-                value: Some(Value::DimValue(1)),
-                ..Default::default()
-            }, // channels
-            Dimension {
-                value: Some(Value::DimValue(64)),
-                ..Default::default()
-            }, // height
-            Dimension {
-                value: Some(Value::DimValue(64)),
-                ..Default::default()
-            }, // width
-        ];
-        graph.input = vec![ValueInfoProto {
-            name: "input".to_string(),
-            type_: MessageField::some(TypeProto {
-                value: Some(type_proto::Value::TensorType(type_proto::Tensor {
-                    elem_type: DataType::FLOAT as i32,
-                    shape: MessageField::some(TensorShapeProto {
-                        dim: dims,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                })),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }];
-
         let mut input_name = input_name;
         let mut layer_idx = layer_idx;
         for layer in &self.layers {
@@ -165,9 +147,17 @@ impl NN {
         Ok(nn)
     }
 
-    pub fn save_as_onnx_model(&self, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_as_onnx_model(
+        &self,
+        file_path: &str,
+        image_shape: ImageShape,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut file = File::create(file_path)?;
-        let mut graph = GraphProto::default();
+        let mut graph = GraphProto {
+            input: NN::_onnx_input_info(image_shape),
+            ..Default::default()
+        };
+
         self.to_onnx("input".to_string(), 0, &mut graph);
 
         let model = ModelProto {
@@ -185,5 +175,50 @@ impl NN {
 
     pub fn is_cnn(&self) -> bool {
         matches!(self.layers.first(), Some(Layer::Conv(_)))
+    }
+
+    /// Specifies the input information for the ONNX format.
+    /// Note: assumes input is an image, i.e. has a channels and height/width.
+    fn _onnx_input_info(image_shape: ImageShape) -> Vec<ValueInfoProto> {
+        let input_dims = NN::_onnx_input_dims(image_shape);
+        vec![ValueInfoProto {
+            name: "input".to_string(),
+            type_: MessageField::some(TypeProto {
+                value: Some(type_proto::Value::TensorType(type_proto::Tensor {
+                    elem_type: DataType::FLOAT as i32,
+                    shape: MessageField::some(TensorShapeProto {
+                        dim: input_dims,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]
+    }
+
+    /// Specifies the input dimensions (dynamic batch size and fixed spatial dims)
+    /// of the model in the ONNX format.
+    /// Note: assumes input is an image, i.e. has a channels and height/width.
+    fn _onnx_input_dims(image_shape: ImageShape) -> Vec<Dimension> {
+        vec![
+            Dimension {
+                value: Some(Value::DimParam("batch".to_string())),
+                ..Default::default()
+            },
+            Dimension {
+                value: Some(Value::DimValue(image_shape.channels)),
+                ..Default::default()
+            }, // channels
+            Dimension {
+                value: Some(Value::DimValue(image_shape.height)),
+                ..Default::default()
+            }, // height
+            Dimension {
+                value: Some(Value::DimValue(image_shape.width)),
+                ..Default::default()
+            }, // width
+        ]
     }
 }
