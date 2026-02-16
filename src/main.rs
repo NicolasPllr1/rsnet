@@ -1,11 +1,11 @@
-use mnist_rust::layers::{
+use rsnet::layers::{
     Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
 };
-use mnist_rust::model::{ImageShape, NN};
-use mnist_rust::optim::cross_entropy;
-use mnist_rust::optim::OptiName;
-use mnist_rust::run;
-use mnist_rust::train::{self, CheckpointConfig, TrainConfig};
+use rsnet::model::{ImageShape, NN};
+use rsnet::optim::cross_entropy;
+use rsnet::optim::OptiName;
+use rsnet::run;
+use rsnet::train::{self, CheckpointConfig, TrainConfig};
 
 use std::str::FromStr;
 

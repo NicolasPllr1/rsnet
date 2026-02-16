@@ -2,7 +2,7 @@
     <img src="./assets/MNIST_dataset_illustration.png" alt="MNIST dataset illustration" width="400">
 </p>
 
-# Neural Network from Scratch
+# `rsnet` - Neural Networks in Rust
 
 A lightweight implementation of neural networks from 'scratch' in Rust. It
 supports both training and inference. For now, it focuses on the MNIST dataset

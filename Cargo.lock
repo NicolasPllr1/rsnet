@@ -784,25 +784,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mnist-rust"
-version = "0.1.0"
-dependencies = [
- "clap",
- "criterion",
- "image",
- "indicatif",
- "mnist",
- "ndarray",
- "ndarray-rand",
- "onnx-protobuf",
- "protobuf",
- "rand 0.8.5",
- "rayon",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1307,6 +1288,25 @@ name = "rgb"
 version = "0.8.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c6a884d2998352bb4daf0183589aec883f16a6da1f4dde84d8e2e9a5409a1ce"
+
+[[package]]
+name = "rsnet"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "criterion",
+ "image",
+ "indicatif",
+ "mnist",
+ "ndarray",
+ "ndarray-rand",
+ "onnx-protobuf",
+ "protobuf",
+ "rand 0.8.5",
+ "rayon",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "rustversion"

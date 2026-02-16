@@ -1,5 +1,5 @@
 [package]
-name = "mnist-rust"
+name = "rsnet"
 version = "0.1.0"
 edition = "2021"
 

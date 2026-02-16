@@ -1,10 +1,10 @@
-use mnist_rust::layers::{
-    Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
-};
-use mnist_rust::model::{Module, NN};
-use mnist_rust::optim::{cross_entropy, Optimizer, SGDMomentum};
 use ndarray::prelude::*;
 use rand::{distributions::Uniform, thread_rng, Rng};
+use rsnet::layers::{
+    Conv2Dlayer, FcLayer, FlattenLayer, Layer, MaxPoolLayer, ReluLayer, SoftMaxLayer,
+};
+use rsnet::model::{Module, NN};
+use rsnet::optim::{cross_entropy, Optimizer, SGDMomentum};
 
 #[derive(Debug)]
 struct TestDataset {

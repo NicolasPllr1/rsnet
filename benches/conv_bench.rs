@@ -1,9 +1,9 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
-use mnist_rust::layers::Conv2Dlayer;
-use mnist_rust::model::Module;
 use ndarray::{Array4, ArrayD};
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
+use rsnet::layers::Conv2Dlayer;
+use rsnet::model::Module;
 use std::f32;
 use std::hint::black_box;
 
