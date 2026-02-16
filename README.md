@@ -102,7 +102,7 @@ This test ensure that we don't break the core training mechanics - at least with
 this optimizer.
 
 To run it, you can use `cargo test`. However I recommend testing on release mode
-and adding the no capture flag to see the debug prints:
+for faster execution and using the `--nocapture` flag to see debug prints:
 `cargo test --release -- --nocapture`
 
 Note: the test was slightly flaky due to potential bad luck in the network
