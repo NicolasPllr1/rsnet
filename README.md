@@ -91,3 +91,19 @@ Resources:
 - [Doc](https://onnx.ai/onnx/index.html):
   - [Concepts](https://onnx.ai/onnx/intro/index.html)
   - [Operators](https://onnx.ai/onnx/operators/index.html)
+
+## Tests
+
+We currently only have a single test. It tries to train a small CNN on a single
+batch of random data using SGD with momentum. The goal is to overfit the dataset
+within a given optimization 'step budget'.
+
+This test ensure that we don't break the core training mechanics - at least with
+this optimizer.
+
+To run it, you can use `cargo test`. However I recommend testing on release mode
+and adding the no capture flag to see the debug prints:
+`cargo test --release -- --nocapture`
+
+Note: the test was slightly flaky due to potential bad luck in the network
+initialization. A simple retry strategy is implemented, which makes it reliable.
