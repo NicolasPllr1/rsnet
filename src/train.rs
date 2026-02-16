@@ -1,18 +1,18 @@
 use crate::custom_dataset::{load_and_preprocess_image, load_dataset, Dataset};
 use crate::model::{Module, NN};
-use crate::optim::{Adam, CostFunction, OptiName, Optimizer, SGDMomentum};
+use crate::optim::{CostFunction, OptiName};
 use crate::DEBUG;
-use rayon::prelude::*;
-use std::collections::HashMap;
-use std::path::Path;
 
 use indicatif::{ProgressBar, ProgressStyle};
-
 use ndarray::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use rayon::prelude::*;
+
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
+use std::path::Path;
 
 /// Train a neural network
 pub fn train(
@@ -50,17 +50,17 @@ pub fn train(
     pb.set_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
-            .unwrap(),
+            .expect("progress bar init"),
     );
     let mut optim_step = 1;
 
     for _epoch in 0..nb_epochs {
         indices.shuffle(&mut thread_rng());
-
         for (_batch_idx, batch_indices) in indices.chunks_exact(batch_size).enumerate() {
             let mut batch_images = Vec::with_capacity(batch_size * in_channels * h * w);
             let mut batch_labels = Vec::new();
 
+            // TODO: measure this loop perf normal/release and try a // version
             for &idx in batch_indices {
                 let (path, label) = &train_dataset.samples[idx];
                 let processed_pixels = load_and_preprocess_image(path, h as u32, w as u32);
@@ -82,8 +82,8 @@ pub fn train(
             // ----------
             nn.zero_grad();
             let output = nn.forward(input);
-            let output = output // (batch_size, num_classes)
-                .into_dimensionality::<Ix2>()
+            let output = output
+                .into_dimensionality::<Ix2>() // (batch_size, num_classes)
                 .expect("Network output should be 2D: (batch_size, num_classes)");
             let (loss, init_grad) = cost_function(&batch_labels, &output);
             nn.backward(init_grad.into_dyn());
@@ -91,9 +91,13 @@ pub fn train(
             // ----------
 
             if optim_step % checkpoint_stride == 0 {
-                let avg_loss = loss.sum() / loss.len() as f32;
-                pb.println(format!("[BATCH] step {} loss: {:.4}", optim_step, avg_loss));
+                let avg_loss = loss.sum() / loss.len() as f32; // batch loss
+                pb.println(format!(
+                    "[BATCH] step {} loss: {:.4}\n",
+                    optim_step, avg_loss
+                ));
                 let (acc, pred_stats) = validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
+
                 save_metrics(&mut csv_file, optim_step, avg_loss, acc, pred_stats)?;
 
                 if let Some(ckpt_path) = checkpoint_folder {
@@ -106,7 +110,7 @@ pub fn train(
         }
     }
 
-    println!("Final validation");
+    pb.println("Final validation");
     validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
 
     if let Some(ckpt_path) = checkpoint_folder {
@@ -159,11 +163,11 @@ fn validation(
 
                 let input = if nn.is_cnn() {
                     Array4::from_shape_vec((1, in_channels, h, w), img_f32)
-                        .map_err(|e| format!("Failed to create input array: {}", e))?
+                        .expect("[VAL] Failed to create 4D input array for CNN")
                         .into_dyn()
                 } else {
                     Array2::from_shape_vec((1, h * w), img_f32)
-                        .map_err(|e| format!("Failed to create input array: {}", e))?
+                        .expect("[VAL] Failed to create 2D input array")
                         .into_dyn()
                 };
 
