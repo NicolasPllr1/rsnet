@@ -51,17 +51,14 @@ pub trait Module {
     /// Note:
     /// - the dz/dx Jacobian matrix is not materialized (too wasteful). Instead, each layer
     ///   directly computes the matrix-vector product of interest.
-    /// - the shape of the function output - which corresponds to dLoss/dx - is the same shape as the layer inputs.
+    /// - the shape of `backward` output - which corresponds to dLoss/dx - is the same shape as the layer inputs.
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32>;
-    // fn get_weight_grads(&mut self) -> Option<(ArrayD<f32>, ArrayD<f32>)>;
     fn zero_grad(&mut self);
-
     fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NN {
-    // layers: Vec<Box<dyn Module>>,
     pub layers: Vec<Layer>,
 }
 
@@ -76,7 +73,7 @@ impl Module for NN {
 
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32> {
         let mut x = dz;
-        // Iterate layers in reverse order, mutate each as we go
+        // Iterate layers in *reverse* order, mutate each as we go
         for layer in self.layers.iter_mut().rev() {
             x = layer.backward(x);
         }
