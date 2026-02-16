@@ -3,22 +3,24 @@ pub use crate::model::Module;
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
+use onnx_protobuf::{tensor_proto, GraphProto, NodeProto, TensorProto};
 use serde::{Deserialize, Serialize};
+
 use std::f32;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 ///  z = W.a_prev + b
 pub struct FcLayer {
     input_size: usize,
     output_size: usize,
     //
-    weights: Array2<f32>, // (input_size, output_size)
-    bias: Array1<f32>,    //  (output_size)
+    pub weights: Array2<f32>, // (input_size, output_size)
+    pub bias: Array1<f32>,    //  (output_size)
     // for backprop
     last_input: Option<Array2<f32>>, // (batch_size, input_size), this is the prev layer activation
     //
-    w_grad: Option<Array2<f32>>, // (input_size, output_size)
-    b_grad: Option<Array1<f32>>, // (output_size)
+    pub w_grad: Option<Array2<f32>>, // (input_size, output_size)
+    pub b_grad: Option<Array1<f32>>, // (output_size)
 }
 
 impl FcLayer {
@@ -35,16 +37,17 @@ impl FcLayer {
             b_grad: None,
         }
     }
+
+    /// Scale factor to implement Kaming He initialization.
     fn get_scale(input_size: usize) -> f32 {
-        (2.0 / input_size as f32).sqrt()
+        (6.0 / input_size as f32).sqrt()
     }
-    fn init_bias(input_size: usize, output_size: usize) -> Array1<f32> {
-        return Array1::random(output_size, Uniform::new(-1.0, 1.0).unwrap())
-            * FcLayer::get_scale(input_size);
+    fn init_bias(_input_size: usize, output_size: usize) -> Array1<f32> {
+        Array1::zeros(output_size)
     }
     fn init_2d_mat(input_size: usize, output_size: usize) -> Array2<f32> {
-        return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap())
-            * FcLayer::get_scale(input_size);
+        Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap())
+            * FcLayer::get_scale(input_size)
     }
 }
 
@@ -58,8 +61,7 @@ impl Module for FcLayer {
 
         // (batch_size, input_size) X (input_size, output_size) = (batch_size, output_size)
         let out = input.dot(&self.weights) + self.bias.clone();
-        let out = out.into_dyn(); // dynamic array type
-        out
+        out.into_dyn() // dynamic array type
     }
 
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32> {
@@ -82,17 +84,47 @@ impl Module for FcLayer {
         //  What needs to be passed on to the 'previous' layer in the network
         //  (batch_size, output_size) X (input_size, output_size)^T
         let new_dz = dz.dot(&self.weights.t()); // (input_size, batch_size)
-        let new_dz = new_dz.into_dyn(); // dynamic array type
-        new_dz
+        new_dz.into_dyn() // dynamic array type
     }
-    fn step(&mut self, lr: f32) {
-        self.weights -= &(self.w_grad.take().unwrap() * lr);
 
-        self.bias -= &(self.b_grad.take().unwrap() * lr);
-        // reset gradients
+    fn zero_grad(&mut self) {
         self.w_grad = None;
         self.b_grad = None;
-        // reset input
-        self.last_input = None;
+    }
+
+    fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String {
+        let layer_name = format!("fc_layer_{layer_idx}");
+        let weight_name = format!("{layer_name}_w");
+        let bias_name = format!("{layer_name}_b");
+        let output_name = format!("{layer_name}_out");
+
+        // Weights
+        graph.initializer.push(TensorProto {
+            name: weight_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![self.weights.nrows() as i64, self.weights.ncols() as i64],
+            float_data: self.weights.iter().cloned().collect(),
+            ..Default::default()
+        });
+        // Bias
+        graph.initializer.push(TensorProto {
+            name: bias_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![self.bias.len() as i64],
+            float_data: self.bias.iter().cloned().collect(),
+            ..Default::default()
+        });
+
+        // Gemm op: https://onnx.ai/onnx/operators/onnx__Gemm.html
+        let fc_node = NodeProto {
+            input: vec![input_name, weight_name.clone(), bias_name.clone()], // [A, B, C]
+            output: vec![output_name.clone()],
+            name: layer_name,
+            op_type: "Gemm".to_string(), // default behavior here: Y = A*B + C
+            ..Default::default()
+        };
+        graph.node.push(fc_node);
+
+        output_name
     }
 }

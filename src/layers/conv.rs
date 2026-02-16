@@ -1,28 +1,35 @@
 use crate::model::Module;
 use crate::DEBUG;
+
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Uniform;
 use ndarray_rand::RandomExt;
+use onnx_protobuf::attribute_proto;
+use onnx_protobuf::tensor_proto;
+use onnx_protobuf::AttributeProto;
+use onnx_protobuf::NodeProto;
+use onnx_protobuf::TensorProto;
 use serde::{Deserialize, Serialize};
+
 use std::f32;
 
 /// 2D convolution layer (without padding and with stride=1).
 /// pytorch doc: https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Conv2Dlayer {
     in_channels: usize,          // Number of channels in the input image
     out_channels: usize,         // Number of channels produced by the convolution
     kernel_size: (usize, usize), // Size of all the 2d convolving kernels used in this layer.
     stride: usize,               // Stride of the convolution. Will be hardocoded to 1 for now.
     // weights
-    kernels_mat: Array2<f32>, // Layout for img2col: (out_channels, in_channels*k^2)
-    b: Array1<f32>,           // One bias per output channel: (output_channels)
+    pub kernels_mat: Array2<f32>, // Layout for img2col: (out_channels, in_channels*k^2)
+    pub b: Array1<f32>,           // One bias per output channel: (output_channels)
     // for backprop
     last_input: Option<Array3<f32>>, // The 'patches' matrix in img2col: (batch_size, locations, in_channels * k^2)
     //
-    k_grad: Option<Array2<f32>>, // (in_channels, out_channels, kernel_size)
-    b_grad: Option<Array1<f32>>, // (out_channels)
+    pub k_grad: Option<Array2<f32>>, // (in_channels, out_channels, kernel_size)
+    pub b_grad: Option<Array1<f32>>, // (out_channels)
 }
 
 impl Conv2Dlayer {
@@ -46,17 +53,18 @@ impl Conv2Dlayer {
             b_grad: None,
         }
     }
+
+    /// Scale factor to implement Kaming He initialization.
     fn get_scale(in_channels: usize, kernel_size: (usize, usize)) -> f32 {
-        (2.0 / (in_channels * kernel_size.0 * kernel_size.1) as f32).sqrt()
+        (6.0 / (in_channels * kernel_size.0 * kernel_size.1) as f32).sqrt() // 2 -> 6, uniform vs normal
     }
 
     fn init_bias(
-        in_channels: usize,
+        _in_channels: usize,
         out_channels: usize,
-        kernel_size: (usize, usize),
+        _kernel_size: (usize, usize),
     ) -> Array1<f32> {
-        return Array1::random(out_channels, Uniform::new(-1.0, 1.0).unwrap())
-            * Conv2Dlayer::get_scale(in_channels, kernel_size);
+        Array1::zeros(out_channels)
     }
     fn init_kernel(
         in_channels: usize,
@@ -67,10 +75,10 @@ impl Conv2Dlayer {
         let k = kernel_size.0;
         // Kernel weights layed-out for the 'img2col' method to compute the convolution.
         // Dimensions: (out_channels, in_channels*k^2)
-        return Array2::random(
+        Array2::random(
             (out_channels, in_channels * k * k),
             Uniform::new(-1.0, 1.0).unwrap(),
-        ) * Conv2Dlayer::get_scale(in_channels, kernel_size);
+        ) * Conv2Dlayer::get_scale(in_channels, kernel_size)
     }
 }
 
@@ -80,9 +88,12 @@ impl Module for Conv2Dlayer {
     /// The 'img2col' idea is to map the convolution operation to a single matmul.
     /// The goal is to compute OUT = kernels_mat x patches_mat, where patches_mat
     /// is a matrix where columns correspond to entire input patches to the convolution kernel.
-    /// In terme of size (ommiting about the batch dim to simplify):
+    ///
+    /// In term of size (ommiting about the batch dim to simplify):
+    ///
     /// - kernels_mat: (out_channels, channels_in * k^2)
     /// - patches_mat: (channels_in * k ^2, locations)
+    ///
     /// So their multiplication yiels: (out_channels, locations)
     /// By locations, we means every valid coordinate in the input feature map volume
     /// where the kernel can be used to compute a value through the convolution.
@@ -177,8 +188,7 @@ impl Module for Conv2Dlayer {
         // Cache the input patches matrix
         self.last_input = Some(last_input);
 
-        let out = out.into_dyn();
-        out
+        out.into_dyn()
     }
 
     /// Backward for the convolution layer using the 'img2col' method.
@@ -199,24 +209,33 @@ impl Module for Conv2Dlayer {
     ///
     /// Gradients:
     /// - dL/dkernels_mat = dL/dconv_output * (dconv_output/dkernels_mat)^T = dz dot patches_mat^T.
+    ///
     /// In sizes: (out_channels, in_channels * k^2) = (out_channels, locations) dot (in_channels * k^2, locations)^T.
     /// Note that dz here refered to the reshaped incoming dz.
     ///
     /// - DL/dbias : (out_channels) = dz.sum(-1).sum(0)
+    ///
     /// For the bias, we want to reduce for every output channels all the gradient values at every
     /// location, since the same bias was added to all these location (for a given output channel), and also sum over the batch dimension.
     ///
     /// - dL/dinput ? We compute dL/dpatches_mat and then reshape it for the input matrix.
     /// - DL/dpatches_mat = doutput/dinput dot dL/doutput = kernels_mat^T dot dz
-    /// in sizes: (in_channels * k^2, locations) = (out_channels, in_channels * k^2)^T dot (out_channels, locations)
+    ///
+    /// In sizes: (in_channels * k^2, locations) = (out_channels, in_channels * k^2)^T dot (out_channels, locations)
+    ///
     /// Which we then map carefully to: (channels_in, height, width).
+    ///
     /// Method to re-shape from (channels_in * k ^2, locations) to (channels_in, height, width):
+    ///
     /// 0. Init empty input grad tensor with zeros and shape (channels_in, height, width)
     /// 1. transpose&reshape the matmul output (dL/dpatches_mat) from (channels_in * k^2, locations) to (locations, channels_in, k, k)
-    /// - Let's call this reshaped tensor grad_patches
+    ///
+    /// Let's call this reshaped tensor grad_patches
+    ///
     /// 2. Iterate over the locations. For each location:
     ///     - we have a (channels_in, k, k) row (the patch which influenced the output at that particular location)
     ///     - we then populate the input grad tensor, += (accumulation!) the kxk values which are all around this particular location
+    ///
     /// Mapping between a patch location and the corresponding coordinate in the input window:
     /// - The method to do this mapping is to find the top left corner coordinate and go from there
     /// - For location index l: top_y = l // out_width, top_x = l % out_width
@@ -315,19 +334,70 @@ impl Module for Conv2Dlayer {
         dinput.into_dyn()
     }
 
-    fn step(&mut self, lr: f32) {
-        self.kernels_mat -= &(self.k_grad.take().unwrap() * lr);
-
-        self.b -= &(self.b_grad.take().unwrap() * lr);
-        // reset gradients
+    fn zero_grad(&mut self) {
         self.k_grad = None;
         self.b_grad = None;
-        // reset input
-        self.last_input = None;
+    }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("conv2d_{layer_idx}");
+        let kernel_weights_name = format!("{layer_name}_kernel_w");
+        let bias_name = format!("{layer_name}_b");
+        let output_name = format!("{layer_name}_out");
+
+        // Kernel weights
+        assert!(self.kernel_size.0 == self.kernel_size.1);
+        let k = self.kernel_size.0;
+        let kernel_weights_4d: Array4<f32> = self
+            .kernels_mat
+            .to_shape((self.out_channels, self.in_channels, k, k))
+            .expect("can reshape kernel weights to 4D tensor")
+            .to_owned();
+
+        // let kernel_weights_4d = kernel_weights_4d.permuted_axes([1, 0, 2, 3]).to_owned();
+
+        graph.initializer.push(TensorProto {
+            name: kernel_weights_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![
+                self.out_channels as i64,
+                self.in_channels as i64,
+                k as i64,
+                k as i64,
+            ],
+            float_data: kernel_weights_4d.iter().cloned().collect(),
+            ..Default::default()
+        });
+
+        // Bias
+        graph.initializer.push(TensorProto {
+            name: bias_name.clone(),
+            data_type: tensor_proto::DataType::FLOAT as i32,
+            dims: vec![self.out_channels as i64],
+            float_data: self.b.iter().cloned().collect(),
+            ..Default::default()
+        });
+
+        // https://onnx.ai/onnx/operators/onnx__Conv.html
+        let conv_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name, kernel_weights_name, bias_name],
+            output: vec![output_name.clone()],
+            op_type: "Conv".to_string(),
+            ..Default::default() // padding=0, stride=1
+        };
+        graph.node.push(conv_node);
+
+        output_name
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MaxPoolLayer {
     pool_size: (usize, usize),
     // for backprop
@@ -429,12 +499,46 @@ impl Module for MaxPoolLayer {
         dinput.to_owned().into_dyn()
     }
 
-    fn step(&mut self, _learning_rate: f32) {
+    fn zero_grad(&mut self) {
         self.last_input_max_mask = None;
+    }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("maxpool_{layer_idx}");
+        let output_name = format!("{layer_name}_out");
+
+        let maxpool_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name], // softmax over the last axis
+            output: vec![output_name.clone()],
+            op_type: "MaxPool".to_string(),
+            attribute: vec![
+                AttributeProto {
+                    name: "kernel_shape".to_string(),
+                    type_: attribute_proto::AttributeType::INTS.into(),
+                    ints: vec![self.pool_size.0 as i64, self.pool_size.1 as i64],
+                    ..Default::default()
+                },
+                AttributeProto {
+                    name: "strides".to_string(),
+                    type_: attribute_proto::AttributeType::INTS.into(),
+                    ints: vec![self.pool_size.0 as i64, self.pool_size.1 as i64],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default() // padding=0, stride=1
+        };
+        graph.node.push(maxpool_node);
+        output_name
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct FlattenLayer {
     last_input: Option<ArrayD<f32>>,
 }
@@ -473,7 +577,28 @@ impl Module for FlattenLayer {
 
         new_dz
     }
-    fn step(&mut self, _learning_rate: f32) {
+
+    fn zero_grad(&mut self) {
         self.last_input = None;
+    }
+
+    fn to_onnx(
+        &self,
+        input_name: String,
+        layer_idx: usize,
+        graph: &mut onnx_protobuf::GraphProto,
+    ) -> String {
+        let layer_name = format!("flatten_{layer_idx}");
+        let output_name = format!("{layer_name}_out");
+
+        let maxpool_node = NodeProto {
+            name: layer_name,
+            input: vec![input_name],
+            output: vec![output_name.clone()],
+            op_type: "Flatten".to_string(),
+            ..Default::default() // padding=0, stride=1
+        };
+        graph.node.push(maxpool_node);
+        output_name
     }
 }

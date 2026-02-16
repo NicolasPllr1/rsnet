@@ -4,6 +4,7 @@ pub use crate::layers::fc::FcLayer;
 pub use crate::model::Module;
 
 use ndarray::prelude::*;
+use onnx_protobuf::GraphProto;
 use serde::{Deserialize, Serialize};
 use std::f32;
 
@@ -11,7 +12,7 @@ pub mod activations;
 pub mod conv;
 pub mod fc;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Layer {
     FC(FcLayer),
     Conv(Conv2Dlayer),
@@ -44,14 +45,25 @@ impl Module for Layer {
         }
     }
 
-    fn step(&mut self, lr: f32) {
+    fn zero_grad(&mut self) {
         match self {
-            Layer::FC(l) => l.step(lr),
-            Layer::Conv(l) => l.step(lr),
-            Layer::Pool(l) => l.step(lr),
-            Layer::ReLU(l) => l.step(lr),
-            Layer::Softmax(l) => l.step(lr),
-            Layer::Flatten(l) => l.step(lr),
+            Layer::FC(l) => l.zero_grad(),
+            Layer::Conv(l) => l.zero_grad(),
+            Layer::Pool(l) => l.zero_grad(),
+            Layer::ReLU(l) => l.zero_grad(),
+            Layer::Softmax(l) => l.zero_grad(),
+            Layer::Flatten(l) => l.zero_grad(),
+        }
+    }
+
+    fn to_onnx(&self, input_name: String, layer_idx: usize, graph: &mut GraphProto) -> String {
+        match self {
+            Layer::FC(fc_layer) => fc_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::Conv(conv2_dlayer) => conv2_dlayer.to_onnx(input_name, layer_idx, graph),
+            Layer::Pool(max_pool_layer) => max_pool_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::ReLU(relu_layer) => relu_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::Softmax(soft_max_layer) => soft_max_layer.to_onnx(input_name, layer_idx, graph),
+            Layer::Flatten(flatten_layer) => flatten_layer.to_onnx(input_name, layer_idx, graph),
         }
     }
 }

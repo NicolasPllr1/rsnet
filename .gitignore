@@ -1,8 +1,11 @@
 /target
 
-loss.csv
-/checkpoints*
+*.csv
+ckpt/
+losses/
 /plots
 
 # Macos
 .DS_Store
+
+*/*dataset*/*

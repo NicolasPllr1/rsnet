@@ -14,8 +14,8 @@ def build_metadata_json(data_dir: Path, train_p: float) -> Path:
     # Initialize the metadata structure
     # MNIST has classes 0-9
     metadata: MetadataJson = {
-        "train": {i: [] for i in range(10)},
-        "test": {i: [] for i in range(10)},
+        "train": {i: [] for i in range(1, 11)},
+        "test": {i: [] for i in range(1, 11)},
     }
 
     # rglob .png to find all images

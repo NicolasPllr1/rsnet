@@ -1,185 +1,244 @@
-use crate::mnist_dataset::load_mnist;
+use crate::custom_dataset::{load_and_preprocess_image, load_dataset, Dataset};
 use crate::model::{Module, NN};
-use crate::optim::{cross_entropy, Optimizer, SGD};
+use crate::optim::{CostFunction, OptiName};
 use crate::DEBUG;
 
-use indicatif::ProgressIterator;
-
+use indicatif::{ProgressBar, ProgressStyle};
 use ndarray::prelude::*;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use std::fs;
+use rayon::prelude::*;
+
+use std::collections::HashMap;
+use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+
+pub struct TrainConfig {
+    pub data_dir: String,
+    //
+    pub batch_size: usize,
+    pub nb_epochs: usize,
+    //
+    pub cost_function: CostFunction,
+    pub optimizer_name: OptiName,
+    pub learning_rate: f32,
+}
+
+pub struct CheckpointConfig {
+    pub checkpoint_folder: Option<String>,
+    pub checkpoint_stride: usize,
+    pub loss_csv_path: String,
+}
 
 /// Train a neural network
 pub fn train(
     mut nn: NN,
-    batch_size: usize,
-    nb_epochs: usize,
-    learning_rate: f32,
-    checkpoint_folder: &str,
-    checkpoint_stride: usize,
-    loss_csv_path: &str,
+    train_cfg: TrainConfig,
+    ckpt_cfg: CheckpointConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Create checkpoint folder if it doesn't exist
-    fs::create_dir_all(checkpoint_folder)?;
+    if let Some(ref ckpt_path) = ckpt_cfg.checkpoint_folder {
+        fs::create_dir_all(ckpt_path)?; // in case the folder does not exist
+    }
 
-    // Load MNIST dataset
-    let (train_images, train_labels, test_images, test_labels) = load_mnist();
-    let num_images = train_images.len() / 784;
-    let num_test_images = test_images.len() / 784;
-    println!("Loaded {} training images", num_images);
-    println!("Loaded {} test images", num_test_images);
+    let (train_dataset, test_dataset) = load_dataset(&train_cfg.data_dir, None);
+    println!("[TRAIN] len: {}", train_dataset.samples.len());
+    println!("[TEST] len: {}\n", test_dataset.samples.len());
 
-    // Prepare training data for shuffling per epoch
-    // Collect data into vectors for efficient access
-    let train_data_vec: Vec<(&[u8], &u8)> =
-        train_images.chunks(784).zip(train_labels.iter()).collect();
+    let mut indices: Vec<usize> = (0..train_dataset.samples.len()).collect();
 
-    // Create indices that will be shuffled for each epoch
-    let mut indices: Vec<usize> = (0..num_images).collect();
+    let (in_channels, h, w) = (1, 64, 64); // Downscaled size
 
     // Create or truncate CSV file and write header
-    let mut csv_file = fs::File::create(loss_csv_path)?;
-    writeln!(csv_file, "epoch,loss,duration,accuracy")?;
+    let mut csv_file = fs::File::create(ckpt_cfg.loss_csv_path)?;
+    writeln!(csv_file, "step,loss,duration,accuracy,stats")?;
 
-    let optimizer = SGD { learning_rate };
+    let mut optimizer = train_cfg
+        .optimizer_name
+        .build_optimizer(&nn, train_cfg.learning_rate);
+    println!("[OPTIMIZER] {:?}", train_cfg.optimizer_name);
 
-    // Iterate through epochs
-    for epoch in (0..nb_epochs).progress() {
-        let epoch_start = std::time::Instant::now();
-        // Shuffle indices for this epoch
+    let nb_epochs = train_cfg.nb_epochs;
+    let batch_size = train_cfg.batch_size;
+
+    let pb = ProgressBar::new(
+        nb_epochs as u64 * (train_dataset.samples.len() / train_cfg.batch_size) as u64,
+    );
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .expect("progress bar init"),
+    );
+    let mut optim_step = 1;
+
+    for _epoch in 0..train_cfg.nb_epochs {
         indices.shuffle(&mut thread_rng());
+        for batch_indices in indices.chunks_exact(batch_size) {
+            let mut batch_images = Vec::with_capacity(batch_size * in_channels * h * w);
+            let mut batch_labels = Vec::new();
 
-        // Track loss for this epoch
-        let mut epoch_loss_sum = 0.0;
-        let mut epoch_loss_count = 0;
-
-        // Iterate through shuffled data in batches
-        for (batch_idx, batch_indices) in indices.chunks(batch_size).enumerate().progress() {
-            let step_start = std::time::Instant::now();
-            let batch_size = batch_indices.len(); // used to catch the remainder
-
-            // Collect images and labels for this batch efficiently
-            let mut batch_images = Vec::with_capacity(batch_size * 784);
-            let mut batch_labels = Vec::with_capacity(batch_size);
-
+            // TODO: measure this loop perf normal/release and try a // version
             for &idx in batch_indices {
-                let (image, label) = train_data_vec[idx];
-                // Normalize and extend image to batch using iterator
-                batch_images.extend(image.iter().map(|&pixel| pixel as f32 / 255.0));
+                let (path, label) = &train_dataset.samples[idx];
+                let processed_pixels = load_and_preprocess_image(path, h as u32, w as u32);
+
+                batch_images.extend(processed_pixels);
                 batch_labels.push(*label);
             }
 
-            // Create batch input Array4 with shape (batch_size, channels=1, 28, 28)
-            let input = Array4::from_shape_vec((batch_size, 1, 28, 28), batch_images)
-                .map_err(|e| format!("Failed to create input array: {}", e))?;
+            let input = if nn.is_cnn() {
+                Array4::from_shape_vec((batch_size, in_channels, h, w), batch_images.clone())
+                    .map_err(|e| format!("Failed to create input array: {}", e))?
+                    .into_dyn()
+            } else {
+                Array2::from_shape_vec((batch_size, h * w), batch_images)
+                    .map_err(|e| format!("Failed to create input array: {}", e))?
+                    .into_dyn()
+            };
 
-            // Run forward pass (output shape: (batch_size, num_classes))
-            let output = nn.forward(input.into_dyn());
+            // ----------
+            nn.zero_grad();
+            let output = nn.forward(input);
+            let output = output
+                .into_dimensionality::<Ix2>() // (batch_size, num_classes)
+                .expect("Network output should be 2D: (batch_size, num_classes)");
+            let (loss, init_grad) = (train_cfg.cost_function)(&batch_labels, &output);
+            nn.backward(init_grad.into_dyn());
+            optimizer.step(&mut nn);
+            // ----------
 
-            // Calculate loss and do backpropagation on the batch
-            // The cost function will convert labels to one-hot encoding internally
-            let loss = optimizer.step(
-                &mut nn,
-                cross_entropy,
-                &batch_labels,
-                &output
-                    .into_dimensionality::<Ix2>()
-                    .expect("Output should be castable to 2D"),
-            );
+            if optim_step % ckpt_cfg.checkpoint_stride == 0 {
+                let avg_loss = loss.sum() / loss.len() as f32; // batch loss
+                pb.println(format!(
+                    "[BATCH] step {} loss: {:.4}\n",
+                    optim_step, avg_loss
+                ));
+                let (acc, pred_stats) = validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
 
-            if batch_idx % 10 == 0 {
-                let duration = step_start.elapsed();
-                let avg_loss = loss.sum() / batch_size as f32;
-                // This gives you granular speed data per batch
-                if DEBUG {
-                    println!("[BATCH] Step {} took: {:?}", batch_idx, duration);
-                    println!("[BATCH] Step {} loss: {:.4}", batch_idx, avg_loss);
+                save_metrics(&mut csv_file, optim_step, avg_loss, acc, pred_stats)?;
+
+                if let Some(ref ckpt_path) = ckpt_cfg.checkpoint_folder {
+                    save_model(&nn, ckpt_path, optim_step)?;
                 }
             }
 
-            // Accumulate loss for epoch average
-            epoch_loss_sum += loss.mean().unwrap();
-            epoch_loss_count += 1;
-        }
-
-        let epoch_duration = epoch_start.elapsed();
-
-        // Save checkpoint every checkpoint_stride epochs
-        if (epoch + 1) % checkpoint_stride == 0 {
-            let checkpoint_num = (epoch + 1) / checkpoint_stride;
-            let checkpoint_path =
-                Path::new(checkpoint_folder).join(format!("checkpoint_{}.json", checkpoint_num));
-            nn.to_checkpoint(checkpoint_path.to_str().unwrap())?;
-
-            // Get average loss for this epoch
-            let epoch_avg_loss = epoch_loss_sum / epoch_loss_count as f32;
-            if DEBUG {
-                println!("[EPOCH DURATION] {:?}", epoch_duration);
-                println!("[EPOCH LOSS] {:.4}", epoch_avg_loss);
-            }
-
-            // Run test loop to calculate accuracy
-            if DEBUG {
-                println!("Running test loop...");
-            }
-            let mut total_correct = 0;
-            let mut total_samples = 0;
-            for (image, label) in test_images.chunks(784).zip(test_labels.iter()).progress() {
-                // Normalize image
-                let img_f32: Vec<f32> = image.iter().map(|&x| x as f32 / 255.0).collect();
-                let input = Array4::from_shape_vec((1, 1, 28, 28), img_f32)
-                    .map_err(|e| format!("Failed to create test input array: {}", e))?;
-
-                let output = nn.forward(input.into_dyn());
-
-                // Find index of max value (argmax) - predicted label
-                let predicted_label = output
-                    .into_dimensionality::<Ix2>()
-                    .expect("Output shoud be castable to 2D")
-                    .row(0)
-                    .iter()
-                    .enumerate()
-                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-                    .map(|(idx, _)| idx)
-                    .unwrap() as u8;
-
-                if predicted_label == *label {
-                    total_correct += 1;
-                }
-                total_samples += 1;
-            }
-            let accuracy = total_correct as f32 / total_samples as f32;
-            if DEBUG {
-                println!("[TEST ACC] {:.3}", accuracy);
-            }
-
-            // Write to CSV
-            writeln!(
-                csv_file,
-                "{},{},{:?},{}",
-                epoch + 1,
-                epoch_avg_loss,
-                epoch_duration,
-                accuracy
-            )?;
-            csv_file.flush()?;
-
-            if DEBUG {
-                println!(
-                    "Saved checkpoint {} at epoch {} (loss: {:.4}, accuracy: {:.2}%)",
-                    checkpoint_num,
-                    epoch + 1,
-                    epoch_avg_loss,
-                    accuracy * 100.0
-                );
-            }
+            optim_step += 1;
+            pb.inc(1);
         }
     }
 
+    pb.println("Final validation");
+    validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
+
+    if let Some(ref ckpt_path) = ckpt_cfg.checkpoint_folder {
+        nn.to_checkpoint(&format!(
+            "{ckpt_path}/final_imgsize{h}_batch{batch_size}_lr{:0.4}_adam.csv",
+            train_cfg.learning_rate
+        ))?;
+    }
     println!("Training completed!");
-    println!("Checkpoint folder: {}", checkpoint_folder);
     Ok(())
+}
+
+fn save_metrics(
+    csv_file: &mut File,
+    //
+    optim_step: usize,
+    avg_loss: f32,
+    val_acc: f32,
+    pred_stats: HashMap<u8, u64>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    writeln!(
+        csv_file,
+        "{},{:.4},{:.4},'{:?}'",
+        optim_step, avg_loss, val_acc, pred_stats
+    )?;
+    csv_file.flush()?;
+    Ok(())
+}
+
+fn validation(
+    nn: &mut NN,
+    test_dataset: &Dataset,
+    //
+    in_channels: usize,
+    h: usize,
+    w: usize,
+    pb: &ProgressBar,
+) -> Result<(f32, HashMap<u8, u64>), Box<dyn std::error::Error>> {
+    // Run test loop to calculate accuracy
+    if DEBUG {
+        println!("Running test loop...");
+    }
+
+    let (total_correct, total_samples, pred_stats) = test_dataset
+        .samples
+        .par_iter()
+        .fold(
+            || (0, 0, HashMap::<u8, u64>::new()),
+            |(mut correct, mut total, mut stats), (image_path, label)| {
+                let img_f32 = load_and_preprocess_image(image_path, h as u32, w as u32);
+
+                let input = if nn.is_cnn() {
+                    Array4::from_shape_vec((1, in_channels, h, w), img_f32)
+                        .expect("[VAL] Failed to create 4D input array for CNN")
+                        .into_dyn()
+                } else {
+                    Array2::from_shape_vec((1, h * w), img_f32)
+                        .expect("[VAL] Failed to create 2D input array")
+                        .into_dyn()
+                };
+
+                let output = nn.clone().forward(input.into_dyn());
+
+                let predicted_label = output
+                    .into_dimensionality::<Ix2>()
+                    .expect("Output should be castable to 2D")
+                    .row(0)
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.partial_cmp(b.1).expect("NaN in output"))
+                    .map(|(idx, _)| idx)
+                    .unwrap() as u8;
+
+                // Update local thread stats
+                *stats.entry(predicted_label).or_insert(0) += 1; // NOTE: how is there not a data
+                                                                 // race here ?!
+
+                if predicted_label == *label {
+                    correct += 1;
+                }
+                total += 1;
+
+                (correct, total, stats)
+            },
+        )
+        .reduce(
+            || (0, 0, HashMap::new()),
+            |mut a, b| {
+                // Merge the maps from different threads
+                for (label, count) in b.2 {
+                    *a.2.entry(label).or_insert(0) += count;
+                }
+                (a.0 + b.0, a.1 + b.1, a.2)
+            },
+        );
+
+    let accuracy = total_correct as f32 / total_samples as f32;
+    pb.println(format!("[TEST ACC] {:.3}", accuracy));
+    pb.println(format!("[TEST STATS] {:?}\n", pred_stats));
+
+    Ok((accuracy, pred_stats))
+}
+
+fn save_model(
+    nn: &NN,
+    checkpoint_folder: &str,
+    optim_step: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let ckpt_path = Path::new(checkpoint_folder).join(format!("checkpoint_{optim_step}.json"));
+    let ckpt_path = ckpt_path.to_str().unwrap();
+    nn.to_checkpoint(ckpt_path)?;
+
+    Ok(ckpt_path.to_string())
 }

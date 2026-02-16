@@ -1,10 +1,10 @@
 [package]
-name = "mnist-rust"
+name = "rsnet"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ndarray = { version = "0.17.2", features = ["serde"] }
+ndarray = { version = "0.17.2", features = ["serde", "rayon"] }
 ndarray-rand = "0.16.0"
 mnist = "0.6"  # Handles MNIST parsing
 indicatif = "0.17"  # Progress bars (like tqdm)
@@ -13,6 +13,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4.5.54", features = ["derive"] }
 criterion = "0.8.1"
+image = "0.25.9"
+rayon = "1.11.0"
+onnx-protobuf = "0.2.3"
+protobuf = "=3.4.0" # for onnx-protobuf
 
 [[bench]]
 name = "conv_bench"
