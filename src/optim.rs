@@ -139,24 +139,11 @@ impl Optimizer for SGDMomentum {
     fn step(&mut self, nn: &mut NN) {
         let mut next_velocity: Vec<Option<(ArrayD<f32>, ArrayD<f32>)>> = Vec::new();
 
-        let mut total_grad_norm_sq = 0.0;
-        let mut zero_grad_count = 0;
-        let mut total_param_count = 0;
-
         for (layer, prev_velocities) in nn.layers.iter_mut().zip(self.velocity.iter_mut()) {
             match layer {
                 Layer::FC(fc_layer) => {
                     let w_grad = fc_layer.w_grad.as_ref().expect("[FC] w grad");
                     let b_grad = fc_layer.b_grad.as_ref().expect("[FC] bias grad");
-
-                    // Metrics Collection
-                    total_grad_norm_sq += w_grad.iter().map(|x| x * x).sum::<f32>();
-                    total_grad_norm_sq += b_grad.iter().map(|x| x * x).sum::<f32>();
-                    zero_grad_count += w_grad.iter().filter(|&&x| x == 0.0).count();
-                    total_param_count += w_grad.len() + b_grad.len();
-
-                    let max_w = fc_layer.weights.iter().map(|x| x.abs()).fold(0.0, f32::max);
-                    // println!("[OPTIM] Max FC Weight: {}", max_w);
 
                     let lr = self.learning_rate;
                     let mu = self.viscosity;
@@ -193,11 +180,6 @@ impl Optimizer for SGDMomentum {
                     let k_grad = conv2_dlayer.k_grad.as_ref().expect("[CONV] kernel grad");
                     let b_grad = conv2_dlayer.b_grad.as_ref().expect("[CONV] bias grad");
 
-                    total_grad_norm_sq += k_grad.iter().map(|x| x * x).sum::<f32>();
-                    total_grad_norm_sq += b_grad.iter().map(|x| x * x).sum::<f32>();
-                    zero_grad_count += k_grad.iter().filter(|&&x| x == 0.0).count();
-                    total_param_count += k_grad.len() + b_grad.len();
-
                     let lr = self.learning_rate;
                     let mu = self.viscosity;
 
@@ -230,14 +212,6 @@ impl Optimizer for SGDMomentum {
                 _ => next_velocity.push(None), // no weights to update in other layers
             }
         }
-        let g_norm = total_grad_norm_sq.sqrt();
-        let dead_ratio = zero_grad_count as f32 / total_param_count as f32;
-
-        // println!(
-        //     "[OPTIMIZER] G_Norm: {:.6}, Dead_Params: {:.2}%",
-        //     g_norm,
-        //     dead_ratio * 100.0
-        // );
 
         self.velocity = next_velocity;
     }
