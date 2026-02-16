@@ -22,10 +22,15 @@ Layers available:
 - Convolution, max pooling, flatten layers
 - ReLU and softmax activations
 
-Training
+Training:
 
 - Stochastic gradient descent (SGD) with cross-entropy loss.
 - Persistence: save and load models via JSON checkpoints (courtesy of serde).
+
+ONNX export:
+
+- export models to the [ONNX](https://onnx.ai/) format for cross-platform
+  deployment
 
 ### Note on convolutions
 
@@ -42,7 +47,8 @@ Ressource:
 
 ### Training
 
-To train the model on MNIST, use the `train`. You can pass a bunch of standard hyper-parameters as well as specify paths for check-pointing:
+To train the model on MNIST, use the `train`. You can pass a bunch of standard
+hyper-parameters as well as specify paths for check-pointing:
 
 ```bash
 cargo run --release -- train \
@@ -55,18 +61,18 @@ cargo run --release -- train \
   --loss-csv-path loss.csv \
 ```
 
-
 Note: use the `--help` flag to get more info (`cargo run -- train --help`)
 
 ### Inference
 
-To run a single image through a saved checkpoint:
+You can load a saved model and run inference on a bitmap image using the `run`
+command:
 
 ```bash
-cargo run --release -- run ckpt/my_latest_ckpt.json image_sample.bin
+cargo run --release -- run \
+  --checkpoint <path-to-model-checkpoint> \
+  --image-path <path-to-image.bin>
 ```
-
-Note: use the `--help` flag to get more info (`cargo run -- run --help`)
 
 ### ONNX
 
