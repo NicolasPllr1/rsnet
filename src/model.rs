@@ -21,7 +21,9 @@ pub trait Module {
     /// where z is the current layer output.
     /// The job of the backward pass is to combine its 'local gradients' - namely dz/dx, dz/dw -
     /// with this incoming gradient - dLoss/dz - using the chain rule.
+    ///
     /// The backward should:
+    ///
     /// - return dLoss/dx = dz/dx * dLoss/dz
     /// - fill in the gradients for the layer's own weights dLoss/dw = dz/dw * dLoss/dz
     ///
@@ -31,9 +33,8 @@ pub trait Module {
     ///
     /// Note:
     /// - the dz/dx Jacobian matrix is not materialized (too wasteful). Instead, each layer
-    /// directly computes the matrix-vector product of interest.
-    /// - the shape of the function output - which corresponds to dLoss/dx - is the same shape
-    /// as the layer inputs.
+    ///   directly computes the matrix-vector product of interest.
+    /// - the shape of the function output - which corresponds to dLoss/dx - is the same shape as the layer inputs.
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32>;
     // fn get_weight_grads(&mut self) -> Option<(ArrayD<f32>, ArrayD<f32>)>;
     fn zero_grad(&mut self);
@@ -183,9 +184,6 @@ impl NN {
     }
 
     pub fn is_cnn(&self) -> bool {
-        match self.layers.get(0) {
-            Some(Layer::Conv(_)) => true,
-            _ => false,
-        }
+        matches!(self.layers.first(), Some(Layer::Conv(_)))
     }
 }

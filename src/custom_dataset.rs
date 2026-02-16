@@ -99,10 +99,7 @@ impl KFoldDataset {
         let mut rng = thread_rng();
         samples.shuffle(&mut rng);
 
-        KFoldDataset {
-            k,
-            samples: samples,
-        }
+        KFoldDataset { k, samples }
     }
 
     /// Returns a train / test datasets split, where the test dataset
@@ -149,5 +146,5 @@ pub fn load_and_preprocess_image(path: &PathBuf, target_h: u32, target_w: u32) -
     let resized = img.resize_exact(target_w, target_h, FilterType::Triangle);
     let pixels = resized.to_luma32f(); // luma32f is greyscale in [0,1] ; rgb32f for rgb
     let mean = pixels.iter().sum::<f32>() / pixels.len() as f32;
-    pixels.into_iter().map(|p| p - mean).collect()
+    pixels.iter().map(|p| p - mean).collect()
 }

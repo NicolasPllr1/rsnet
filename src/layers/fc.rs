@@ -43,11 +43,11 @@ impl FcLayer {
         (6.0 / input_size as f32).sqrt()
     }
     fn init_bias(_input_size: usize, output_size: usize) -> Array1<f32> {
-        return Array1::zeros(output_size);
+        Array1::zeros(output_size)
     }
     fn init_2d_mat(input_size: usize, output_size: usize) -> Array2<f32> {
-        return Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap())
-            * FcLayer::get_scale(input_size);
+        Array2::random((input_size, output_size), Uniform::new(-1.0, 1.0).unwrap())
+            * FcLayer::get_scale(input_size)
     }
 }
 
@@ -61,8 +61,7 @@ impl Module for FcLayer {
 
         // (batch_size, input_size) X (input_size, output_size) = (batch_size, output_size)
         let out = input.dot(&self.weights) + self.bias.clone();
-        let out = out.into_dyn(); // dynamic array type
-        out
+        out.into_dyn() // dynamic array type
     }
 
     fn backward(&mut self, dz: ArrayD<f32>) -> ArrayD<f32> {
@@ -85,8 +84,7 @@ impl Module for FcLayer {
         //  What needs to be passed on to the 'previous' layer in the network
         //  (batch_size, output_size) X (input_size, output_size)^T
         let new_dz = dz.dot(&self.weights.t()); // (input_size, batch_size)
-        let new_dz = new_dz.into_dyn(); // dynamic array type
-        new_dz
+        new_dz.into_dyn() // dynamic array type
     }
 
     fn zero_grad(&mut self) {

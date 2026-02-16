@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use std::f32;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ReluLayer {
     last_input: Option<ArrayD<f32>>,
 }
@@ -56,7 +56,7 @@ impl Module for ReluLayer {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SoftMaxLayer {
     last_output: Option<Array2<f32>>,
 }
@@ -114,8 +114,8 @@ impl Module for SoftMaxLayer {
         graph: &mut onnx_protobuf::GraphProto,
     ) -> String {
         let layer_name = format!("softmax_{layer_idx}");
-        let output_name = format!("probs"); // NOTE: assume its the last layer and is unique in the
-                                            // network
+        let output_name = "probs".to_string(); // NOTE: assume its the last layer and is unique in the
+                                               // network
 
         // default: softmax over the last axis
         // https://onnx.ai/onnx/operators/onnx__Softmax.html

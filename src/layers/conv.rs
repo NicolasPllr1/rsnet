@@ -75,10 +75,10 @@ impl Conv2Dlayer {
         let k = kernel_size.0;
         // Kernel weights layed-out for the 'img2col' method to compute the convolution.
         // Dimensions: (out_channels, in_channels*k^2)
-        return Array2::random(
+        Array2::random(
             (out_channels, in_channels * k * k),
             Uniform::new(-1.0, 1.0).unwrap(),
-        ) * Conv2Dlayer::get_scale(in_channels, kernel_size);
+        ) * Conv2Dlayer::get_scale(in_channels, kernel_size)
     }
 }
 
@@ -88,9 +88,12 @@ impl Module for Conv2Dlayer {
     /// The 'img2col' idea is to map the convolution operation to a single matmul.
     /// The goal is to compute OUT = kernels_mat x patches_mat, where patches_mat
     /// is a matrix where columns correspond to entire input patches to the convolution kernel.
-    /// In terme of size (ommiting about the batch dim to simplify):
+    ///
+    /// In term of size (ommiting about the batch dim to simplify):
+    ///
     /// - kernels_mat: (out_channels, channels_in * k^2)
     /// - patches_mat: (channels_in * k ^2, locations)
+    ///
     /// So their multiplication yiels: (out_channels, locations)
     /// By locations, we means every valid coordinate in the input feature map volume
     /// where the kernel can be used to compute a value through the convolution.
@@ -185,8 +188,7 @@ impl Module for Conv2Dlayer {
         // Cache the input patches matrix
         self.last_input = Some(last_input);
 
-        let out = out.into_dyn();
-        out
+        out.into_dyn()
     }
 
     /// Backward for the convolution layer using the 'img2col' method.
@@ -207,24 +209,33 @@ impl Module for Conv2Dlayer {
     ///
     /// Gradients:
     /// - dL/dkernels_mat = dL/dconv_output * (dconv_output/dkernels_mat)^T = dz dot patches_mat^T.
+    ///
     /// In sizes: (out_channels, in_channels * k^2) = (out_channels, locations) dot (in_channels * k^2, locations)^T.
     /// Note that dz here refered to the reshaped incoming dz.
     ///
     /// - DL/dbias : (out_channels) = dz.sum(-1).sum(0)
+    ///
     /// For the bias, we want to reduce for every output channels all the gradient values at every
     /// location, since the same bias was added to all these location (for a given output channel), and also sum over the batch dimension.
     ///
     /// - dL/dinput ? We compute dL/dpatches_mat and then reshape it for the input matrix.
     /// - DL/dpatches_mat = doutput/dinput dot dL/doutput = kernels_mat^T dot dz
-    /// in sizes: (in_channels * k^2, locations) = (out_channels, in_channels * k^2)^T dot (out_channels, locations)
+    ///
+    /// In sizes: (in_channels * k^2, locations) = (out_channels, in_channels * k^2)^T dot (out_channels, locations)
+    ///
     /// Which we then map carefully to: (channels_in, height, width).
+    ///
     /// Method to re-shape from (channels_in * k ^2, locations) to (channels_in, height, width):
+    ///
     /// 0. Init empty input grad tensor with zeros and shape (channels_in, height, width)
     /// 1. transpose&reshape the matmul output (dL/dpatches_mat) from (channels_in * k^2, locations) to (locations, channels_in, k, k)
-    /// - Let's call this reshaped tensor grad_patches
+    ///
+    /// Let's call this reshaped tensor grad_patches
+    ///
     /// 2. Iterate over the locations. For each location:
     ///     - we have a (channels_in, k, k) row (the patch which influenced the output at that particular location)
     ///     - we then populate the input grad tensor, += (accumulation!) the kxk values which are all around this particular location
+    ///
     /// Mapping between a patch location and the corresponding coordinate in the input window:
     /// - The method to do this mapping is to find the top left corner coordinate and go from there
     /// - For location index l: top_y = l // out_width, top_x = l % out_width
@@ -527,7 +538,7 @@ impl Module for MaxPoolLayer {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct FlattenLayer {
     last_input: Option<ArrayD<f32>>,
 }

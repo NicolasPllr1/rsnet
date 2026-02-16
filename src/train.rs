@@ -14,24 +14,34 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 
+pub struct TrainConfig {
+    pub data_dir: String,
+    //
+    pub batch_size: usize,
+    pub nb_epochs: usize,
+    //
+    pub cost_function: CostFunction,
+    pub optimizer_name: OptiName,
+    pub learning_rate: f32,
+}
+
+pub struct CheckpointConfig {
+    pub checkpoint_folder: Option<String>,
+    pub checkpoint_stride: usize,
+    pub loss_csv_path: String,
+}
+
 /// Train a neural network
 pub fn train(
     mut nn: NN,
-    data_dir: &str,
-    batch_size: usize,
-    nb_epochs: usize,
-    cost_function: CostFunction,
-    optimizer_name: OptiName,
-    learning_rate: f32,
-    checkpoint_folder: Option<&str>,
-    checkpoint_stride: usize,
-    loss_csv_path: &str,
+    train_cfg: TrainConfig,
+    ckpt_cfg: CheckpointConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(ckpt_path) = checkpoint_folder {
+    if let Some(ref ckpt_path) = ckpt_cfg.checkpoint_folder {
         fs::create_dir_all(ckpt_path)?; // in case the folder does not exist
     }
 
-    let (train_dataset, test_dataset) = load_dataset(&data_dir, None);
+    let (train_dataset, test_dataset) = load_dataset(&train_cfg.data_dir, None);
     println!("[TRAIN] len: {}", train_dataset.samples.len());
     println!("[TEST] len: {}\n", test_dataset.samples.len());
 
@@ -40,13 +50,20 @@ pub fn train(
     let (in_channels, h, w) = (1, 64, 64); // Downscaled size
 
     // Create or truncate CSV file and write header
-    let mut csv_file = fs::File::create(loss_csv_path)?;
+    let mut csv_file = fs::File::create(ckpt_cfg.loss_csv_path)?;
     writeln!(csv_file, "step,loss,duration,accuracy,stats")?;
 
-    let mut optimizer = optimizer_name.build_optimizer(&nn, learning_rate);
-    println!("[OPTIMIZER] {:?}", optimizer_name);
+    let mut optimizer = train_cfg
+        .optimizer_name
+        .build_optimizer(&nn, train_cfg.learning_rate);
+    println!("[OPTIMIZER] {:?}", train_cfg.optimizer_name);
 
-    let pb = ProgressBar::new(nb_epochs as u64 * (train_dataset.samples.len() / batch_size) as u64);
+    let nb_epochs = train_cfg.nb_epochs;
+    let batch_size = train_cfg.batch_size;
+
+    let pb = ProgressBar::new(
+        nb_epochs as u64 * (train_dataset.samples.len() / train_cfg.batch_size) as u64,
+    );
     pb.set_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
@@ -54,9 +71,9 @@ pub fn train(
     );
     let mut optim_step = 1;
 
-    for _epoch in 0..nb_epochs {
+    for _epoch in 0..train_cfg.nb_epochs {
         indices.shuffle(&mut thread_rng());
-        for (_batch_idx, batch_indices) in indices.chunks_exact(batch_size).enumerate() {
+        for batch_indices in indices.chunks_exact(batch_size) {
             let mut batch_images = Vec::with_capacity(batch_size * in_channels * h * w);
             let mut batch_labels = Vec::new();
 
@@ -85,12 +102,12 @@ pub fn train(
             let output = output
                 .into_dimensionality::<Ix2>() // (batch_size, num_classes)
                 .expect("Network output should be 2D: (batch_size, num_classes)");
-            let (loss, init_grad) = cost_function(&batch_labels, &output);
+            let (loss, init_grad) = (train_cfg.cost_function)(&batch_labels, &output);
             nn.backward(init_grad.into_dyn());
             optimizer.step(&mut nn);
             // ----------
 
-            if optim_step % checkpoint_stride == 0 {
+            if optim_step % ckpt_cfg.checkpoint_stride == 0 {
                 let avg_loss = loss.sum() / loss.len() as f32; // batch loss
                 pb.println(format!(
                     "[BATCH] step {} loss: {:.4}\n",
@@ -100,7 +117,7 @@ pub fn train(
 
                 save_metrics(&mut csv_file, optim_step, avg_loss, acc, pred_stats)?;
 
-                if let Some(ckpt_path) = checkpoint_folder {
+                if let Some(ref ckpt_path) = ckpt_cfg.checkpoint_folder {
                     save_model(&nn, ckpt_path, optim_step)?;
                 }
             }
@@ -113,9 +130,10 @@ pub fn train(
     pb.println("Final validation");
     validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
 
-    if let Some(ckpt_path) = checkpoint_folder {
+    if let Some(ref ckpt_path) = ckpt_cfg.checkpoint_folder {
         nn.to_checkpoint(&format!(
-            "{ckpt_path}/final_imgsize{h}_batch{batch_size}_lr{learning_rate:0.4}_adam.csv"
+            "{ckpt_path}/final_imgsize{h}_batch{batch_size}_lr{:0.4}_adam.csv",
+            train_cfg.learning_rate
         ))?;
     }
     println!("Training completed!");
@@ -159,7 +177,7 @@ fn validation(
         .fold(
             || (0, 0, HashMap::<u8, u64>::new()),
             |(mut correct, mut total, mut stats), (image_path, label)| {
-                let img_f32 = load_and_preprocess_image(&image_path, h as u32, w as u32);
+                let img_f32 = load_and_preprocess_image(image_path, h as u32, w as u32);
 
                 let input = if nn.is_cnn() {
                     Array4::from_shape_vec((1, in_channels, h, w), img_f32)

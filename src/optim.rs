@@ -28,13 +28,12 @@ pub fn cross_entropy(labels: &[u8], actual_y: &Array2<f32>) -> (Array1<f32>, Arr
 
 pub trait Optimizer {
     /// Update the neural network weights in place using the deltas (w := w + delta).
-    /// TODO: write a default impl. for all optimizer
-    // fn update_weights(nn: &mut NN, deltas: Vec<Option<(ArrayD<f32>, ArrayD<f32>)>>);
-
     /// Run one optimization step.
     /// Note:
     /// - Assumes forward+backward pass have been done.
     /// - May mutate the optimizer internal state (e.g. momentum).
+    // /// TODO: write a default impl. for all optimizer
+    // /// fn update_weights(nn: &mut NN, deltas: Vec<Option<(ArrayD<f32>, ArrayD<f32>)>>);
     fn step(&mut self, nn: &mut NN);
 }
 
@@ -338,6 +337,7 @@ impl Optimizer for Adam {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_param(
     param: &mut ArrayViewMutD<f32>,
     grad: &ArrayD<f32>,

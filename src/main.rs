@@ -5,7 +5,7 @@ use mnist_rust::model::NN;
 use mnist_rust::optim::cross_entropy;
 use mnist_rust::optim::OptiName;
 use mnist_rust::run;
-use mnist_rust::train;
+use mnist_rust::train::{self, CheckpointConfig, TrainConfig};
 
 use std::str::FromStr;
 
@@ -76,13 +76,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Layer::Pool(MaxPoolLayer::new((2, 2))), // (4, 62, 62) --> (4, 31, 31)
                     //
                     Layer::Conv(Conv2Dlayer::new(4, 4, (2, 2))), // Input image (4, 31, 31) --> (4, 30, 30)
-                    Layer::ReLU(ReluLayer::new()),
+                    Layer::ReLU(ReluLayer::default()),
                     Layer::Pool(MaxPoolLayer::new((2, 2))), // (4, 30, 30) --> (4, 15, 15)
                     //
-                    Layer::Flatten(FlattenLayer::new()), // Flatten feature maps into a single 1D vector
+                    Layer::Flatten(FlattenLayer::default()), // Flatten feature maps into a single 1D vector
                     //
                     Layer::FC(FcLayer::new(4 * 15 * 15, 5)), // Classes: {1, 2, 3, 5}
-                    Layer::Softmax(SoftMaxLayer::new()),
+                    Layer::Softmax(SoftMaxLayer::default()),
                 ],
             };
 
@@ -90,15 +90,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Err(e) = train::train(
                 nn,
-                &train_data_dir,
-                batch_size,
-                nb_epochs,
-                cross_entropy,
-                optimizer_name,
-                learning_rate,
-                checkpoint_folder.as_deref(),
-                checkpoint_stride,
-                &loss_csv_path,
+                TrainConfig {
+                    data_dir: train_data_dir,
+                    batch_size,
+                    nb_epochs,
+                    cost_function: cross_entropy,
+                    optimizer_name,
+                    learning_rate,
+                },
+                CheckpointConfig {
+                    checkpoint_folder,
+                    checkpoint_stride,
+                    loss_csv_path,
+                },
             ) {
                 eprintln!("Error during training: {}", e);
                 std::process::exit(1);
