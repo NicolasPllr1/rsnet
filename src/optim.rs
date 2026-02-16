@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::layers::Layer;
 use crate::model::NN;
 
@@ -34,6 +36,37 @@ pub trait Optimizer {
     /// - Assumes forward+backward pass have been done.
     /// - May mutate the optimizer internal state (e.g. momentum).
     fn step(&mut self, nn: &mut NN);
+}
+
+#[derive(Debug)]
+pub enum OptiName {
+    SGD,
+    SGDMomentum,
+    Adam,
+}
+
+impl OptiName {
+    pub fn build_optimizer(&self, nn: &NN, lr: f32) -> Box<dyn Optimizer> {
+        match self {
+            OptiName::SGD => Box::new(SGD { learning_rate: lr }),
+            OptiName::SGDMomentum => Box::new(SGDMomentum::new(nn, lr)),
+            OptiName::Adam => Box::new(Adam::new(nn, lr)),
+        }
+    }
+}
+
+impl FromStr for OptiName {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<OptiName, Self::Err> {
+        match s.trim() {
+            //  to_lowercase returns a String which causes issues ...
+            "sgd" => Ok(OptiName::SGD),
+            "momentum" => Ok(OptiName::SGDMomentum),
+            "adam" => Ok(OptiName::Adam),
+            _ => Err("Unexpected optimizer name".to_string()),
+        }
+    }
 }
 
 pub struct SGD {
@@ -123,7 +156,7 @@ impl Optimizer for SGDMomentum {
                     total_param_count += w_grad.len() + b_grad.len();
 
                     let max_w = fc_layer.weights.iter().map(|x| x.abs()).fold(0.0, f32::max);
-                    println!("[OPTIM] Max FC Weight: {}", max_w);
+                    // println!("[OPTIM] Max FC Weight: {}", max_w);
 
                     let lr = self.learning_rate;
                     let mu = self.viscosity;
@@ -200,11 +233,11 @@ impl Optimizer for SGDMomentum {
         let g_norm = total_grad_norm_sq.sqrt();
         let dead_ratio = zero_grad_count as f32 / total_param_count as f32;
 
-        println!(
-            "[OPTIMIZER] G_Norm: {:.6}, Dead_Params: {:.2}%",
-            g_norm,
-            dead_ratio * 100.0
-        );
+        // println!(
+        //     "[OPTIMIZER] G_Norm: {:.6}, Dead_Params: {:.2}%",
+        //     g_norm,
+        //     dead_ratio * 100.0
+        // );
 
         self.velocity = next_velocity;
     }

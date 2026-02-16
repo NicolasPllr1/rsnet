@@ -3,8 +3,11 @@ use mnist_rust::layers::{
 };
 use mnist_rust::model::NN;
 use mnist_rust::optim::cross_entropy;
+use mnist_rust::optim::OptiName;
 use mnist_rust::run;
 use mnist_rust::train;
+
+use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 
@@ -19,6 +22,8 @@ struct Cli {
 enum Commands {
     /// Train a new model
     Train {
+        #[arg(long, default_value = "adam")]
+        optimizer_name: String,
         #[arg(long, default_value_t = 0.001)]
         learning_rate: f32,
         #[arg(long, default_value_t = 128)]
@@ -49,11 +54,12 @@ enum Commands {
     },
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Train {
+            optimizer_name,
             learning_rate,
             batch_size,
             nb_epochs,
@@ -79,12 +85,16 @@ fn main() {
                     Layer::Softmax(SoftMaxLayer::new()),
                 ],
             };
+
+            let optimizer_name = OptiName::from_str(&optimizer_name)?;
+
             if let Err(e) = train::train(
                 nn,
                 &train_data_dir,
                 batch_size,
                 nb_epochs,
                 cross_entropy,
+                optimizer_name,
                 learning_rate,
                 &checkpoint_folder,
                 checkpoint_stride,
@@ -93,6 +103,7 @@ fn main() {
                 eprintln!("Error during training: {}", e);
                 std::process::exit(1);
             }
+            Ok(())
         }
         Commands::Run {
             checkpoint,
@@ -102,6 +113,7 @@ fn main() {
                 eprintln!("Error running inference: {}", e);
                 std::process::exit(1);
             }
+            Ok(())
         }
         Commands::Export {
             checkpoint_path,
@@ -113,6 +125,7 @@ fn main() {
                 eprintln!("Error saving model as ONNX: {}", e);
                 std::process::exit(1);
             }
+            Ok(())
         }
     }
 }
