@@ -67,12 +67,19 @@ pub fn train(
                 batch_labels.push(*label);
             }
 
-            let input = Array4::from_shape_vec((batch_size, in_channels, h, w), batch_images)
-                .map_err(|e| format!("Failed to create input array: {}", e))?;
+            let input = if nn.is_cnn() {
+                Array4::from_shape_vec((batch_size, in_channels, h, w), batch_images.clone())
+                    .map_err(|e| format!("Failed to create input array: {}", e))?
+                    .into_dyn()
+            } else {
+                Array2::from_shape_vec((batch_size, h * w), batch_images)
+                    .map_err(|e| format!("Failed to create input array: {}", e))?
+                    .into_dyn()
+            };
 
             // ----------
             nn.zero_grad();
-            let output = nn.forward(input.into_dyn());
+            let output = nn.forward(input);
             let output = output // (batch_size, num_classes)
                 .into_dimensionality::<Ix2>()
                 .expect("Network output should be 2D: (batch_size, num_classes)");
@@ -141,8 +148,16 @@ fn validation(
             || (0, 0, HashMap::<u8, u64>::new()),
             |(mut correct, mut total, mut stats), (image_path, label)| {
                 let img_f32 = load_and_preprocess_image(&image_path, h as u32, w as u32);
-                let input = Array4::from_shape_vec((1, in_channels, h, w), img_f32)
-                    .expect("Failed to create test input array");
+
+                let input = if nn.is_cnn() {
+                    Array4::from_shape_vec((1, in_channels, h, w), img_f32)
+                        .map_err(|e| format!("Failed to create input array: {}", e))?
+                        .into_dyn()
+                } else {
+                    Array2::from_shape_vec((1, h * w), img_f32)
+                        .map_err(|e| format!("Failed to create input array: {}", e))?
+                        .into_dyn()
+                };
 
                 let output = nn.clone().forward(input.into_dyn());
 

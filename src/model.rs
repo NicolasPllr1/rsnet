@@ -181,4 +181,11 @@ impl NN {
         file.write_all(&model.write_to_bytes()?)?;
         Ok(())
     }
+
+    pub fn is_cnn(&self) -> bool {
+        match self.layers.get(0) {
+            Some(Layer::Conv(_)) => true,
+            _ => false,
+        }
+    }
 }
