@@ -33,7 +33,7 @@ enum Commands {
         #[arg(long, short = 'd')]
         train_data_dir: String,
         #[arg(long, default_value = "checkpoints/")]
-        checkpoint_folder: String,
+        checkpoint_folder: Option<String>,
         #[arg(long, default_value_t = 1)]
         checkpoint_stride: usize, // Every how many epochs do we checkpoint?
         #[arg(long, default_value = "loss.csv")]
@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 cross_entropy,
                 optimizer_name,
                 learning_rate,
-                &checkpoint_folder,
+                checkpoint_folder.as_deref(),
                 checkpoint_stride,
                 &loss_csv_path,
             ) {

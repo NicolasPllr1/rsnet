@@ -23,11 +23,13 @@ pub fn train(
     cost_function: CostFunction,
     optimizer_name: OptiName,
     learning_rate: f32,
-    checkpoint_folder: &str,
+    checkpoint_folder: Option<&str>,
     checkpoint_stride: usize,
     loss_csv_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    fs::create_dir_all(checkpoint_folder)?; // in case the folder does not exist
+    if let Some(ckpt_path) = checkpoint_folder {
+        fs::create_dir_all(ckpt_path)?; // in case the folder does not exist
+    }
 
     let (train_dataset, test_dataset) = load_dataset(&data_dir, None);
     println!("[TRAIN] len: {}", train_dataset.samples.len());
@@ -93,7 +95,10 @@ pub fn train(
                 pb.println(format!("[BATCH] step {} loss: {:.4}", optim_step, avg_loss));
                 let (acc, pred_stats) = validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
                 save_metrics(&mut csv_file, optim_step, avg_loss, acc, pred_stats)?;
-                save_model(&nn, checkpoint_folder, optim_step)?;
+
+                if let Some(ckpt_path) = checkpoint_folder {
+                    save_model(&nn, ckpt_path, optim_step)?;
+                }
             }
 
             optim_step += 1;
@@ -103,9 +108,12 @@ pub fn train(
 
     println!("Final validation");
     validation(&mut nn, &test_dataset, in_channels, h, w, &pb)?;
-    nn.to_checkpoint(&format!(
-        "{checkpoint_folder}/final_imgsize{h}_batch{batch_size}_lr{learning_rate:0.4}_adam.csv"
-    ))?;
+
+    if let Some(ckpt_path) = checkpoint_folder {
+        nn.to_checkpoint(&format!(
+            "{ckpt_path}/final_imgsize{h}_batch{batch_size}_lr{learning_rate:0.4}_adam.csv"
+        ))?;
+    }
     println!("Training completed!");
     Ok(())
 }
