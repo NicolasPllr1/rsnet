@@ -1,6 +1,6 @@
 use crate::custom_dataset::{load_and_preprocess_image, load_dataset, Dataset};
 use crate::model::{Module, NN};
-use crate::optim::{Adam, CostFunction, Optimizer};
+use crate::optim::{Adam, CostFunction, Optimizer, SGDMomentum};
 use crate::DEBUG;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -40,8 +40,8 @@ pub fn train(
     let mut csv_file = fs::File::create(loss_csv_path)?;
     writeln!(csv_file, "step,loss,duration,accuracy,stats")?;
 
-    // let mut optimizer = SGDMomentum::new(&nn, learning_rate, 0.9);
-    let mut optimizer = Adam::new(&nn, learning_rate);
+    let mut optimizer = SGDMomentum::new(&nn, learning_rate);
+    // let mut optimizer = Adam::new(&nn, learning_rate);
 
     let pb = ProgressBar::new(nb_epochs as u64 * (train_dataset.samples.len() / batch_size) as u64);
     pb.set_style(

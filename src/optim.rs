@@ -70,7 +70,7 @@ pub struct SGDMomentum {
 }
 
 impl SGDMomentum {
-    pub fn new(nn: &NN, learning_rate: f32, viscosity: f32) -> SGDMomentum {
+    pub fn new(nn: &NN, learning_rate: f32) -> SGDMomentum {
         let mut velocity = Vec::new();
         for layer in &nn.layers {
             match layer {
@@ -85,7 +85,7 @@ impl SGDMomentum {
         }
         SGDMomentum {
             learning_rate,
-            viscosity,
+            viscosity: 0.9,
             velocity,
         }
     }
